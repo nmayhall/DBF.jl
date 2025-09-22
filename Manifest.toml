@@ -31,7 +31,7 @@ version = "0.3.27+1"
 deps = ["LinearAlgebra", "Printf", "Random"]
 git-tree-sha1 = "aa6ead66d4c830ffb354ec2e134745438cb9e911"
 repo-rev = "main"
-repo-url = "../PauliOperators.jl"
+repo-url = "https://github.com/nmayhall/PauliOperators.jl"
 uuid = "be646426-f34c-4536-b1d4-a45a9633e6db"
 version = "2.0.0"
 
