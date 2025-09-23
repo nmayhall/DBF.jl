@@ -100,7 +100,7 @@ function test1()
     end
 
 
-    for i in 0:.1:1
+    for i in 0:.01:1
         θ = i*2π
         U = TEO(θ)
         cost1_ref = norm(diag(evolve(O,G,θ)))^2
@@ -117,6 +117,12 @@ function test1()
         # @show norm(diag(O))
         # @show norm(diag(evolve(O,G,θ)))
     end
+
+    stepsize = .0001
+    θ1 = argmax([real(cost_diag(i*2π)) for i in 0:stepsize:1-stepsize])
+    θ2 = argmin([real(cost_eval(i*2π)) for i in 0:stepsize:1-stepsize])
+
+    @show θ1*stepsize*2π, θ2*stepsize*2π
 end
 
 test1()
