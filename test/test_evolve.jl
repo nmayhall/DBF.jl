@@ -20,7 +20,7 @@ using Random
         
         A = rand(PauliSum{N}, n_paulis=50)
         B = rand(PauliSum{N}, n_paulis=50)
-        @test overlap(A, B) ≈ tr(A'*B)/2^N
-        @test norm(A)^2 ≈ overlap(A,A) 
+        @test inner_product(A, B) ≈ tr(A'*B)/2^N
+        @test norm(A)^2 ≈ inner_product(A,A) 
     end
 end

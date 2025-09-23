@@ -3,12 +3,12 @@ function optimize_theta_diagonalization(O,G; stepsize=.001, verbose=1)
     Od = diag(O)
     GOGd = diag(G*O*G)
     comd = diag(G*O-O*G)
-    A = overlap(Od,Od) 
-    B = overlap(GOGd,GOGd) 
-    C = overlap(comd,comd) 
-    D = overlap(Od,GOGd) 
-    E = overlap(Od,comd) 
-    F = overlap(GOGd,comd) 
+    A = inner_product(Od,Od) 
+    B = inner_product(GOGd,GOGd) 
+    C = inner_product(comd,comd) 
+    D = inner_product(Od,GOGd) 
+    E = inner_product(Od,comd) 
+    F = inner_product(GOGd,comd) 
 
     verbose < 2 || @show A, B, C, D, E
 

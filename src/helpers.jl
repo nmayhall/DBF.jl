@@ -1,4 +1,4 @@
-function overlap(O1::PauliSum{N,T}, O2::PauliSum{N,T}) where {N,T}
+function inner_product(O1::PauliSum{N,T}, O2::PauliSum{N,T}) where {N,T}
     out = T(0)
     if length(O1) < length(O2)
         for (p1,c1) in O1

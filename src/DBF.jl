@@ -12,6 +12,6 @@ include("evolve.jl")
 
 
 export evolve
-export overlap
+export inner_product
 
 end
