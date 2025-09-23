@@ -5,6 +5,7 @@ using Test
 
 @testset "DBF.jl" begin
 
+    include("test_theta_opt.jl")
     N = 3
     O = rand(PauliSum{N}, n_paulis=50)
     @test norm(diag(Matrix(O))) ≈ norm(Matrix(diag(O))) 

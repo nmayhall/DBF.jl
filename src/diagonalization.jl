@@ -1,29 +1,5 @@
-using PauliOperators
-using DBF
-using LinearAlgebra
-using Printf
-using Random
 
-function test1()
-    # Random.seed!(1)
-    N = 3
-    O = rand(PauliSum{N}, n_paulis=100)
-    O += O'
-    G = rand(PauliBasis{N})
-    ψ = Ket{N}(0)
-
-    display(O)
-    display(G)
-
-    Gmat = Matrix(G)
-    Omat = Matrix(O)
-    ψvec = Vector(ψ)
-
-    function TEO(θ)
-        return exp(-1im * θ/2 * Gmat)
-    end
-
-
+function optimize_theta_diagonalization(O,G; stepsize=.001, verbose=1)
     Od = diag(O)
     GOGd = diag(G*O*G)
     comd = diag(G*O-O*G)
@@ -34,8 +10,9 @@ function test1()
     E = overlap(Od,comd) 
     F = overlap(GOGd,comd) 
 
-    @show A, B, C, D, E
-    function cost_diag(θ)
+    verbose == 0 || @show A, B, C, D, E
+
+    function cost(θ)
         # C(x) = ||diag(U(x)' O U(x))||
         #      = ||diag((cos(x/2)+isin(x/2)G) O (cos(x/2)-isin(x/2)G)) ||
         #      = ||cos(x/2)^2diag(O) + sin(x/2)^2 diag(GOG) + isin(x/2)cos(x/2)diag([G,O]))||
@@ -83,47 +60,10 @@ function test1()
         #      
         c = cos(θ/2)
         s = sin(θ/2)
-        return c^4 * A + s^4 * B + s^2*c^2*(C+2D) + 2im *c^3*s*E + 2im *c*s^3*F
+        return real(c^4 * A + s^4 * B + s^2*c^2*(C+2D) + 2im *c^3*s*E + 2im *c*s^3*F)
     end
-
-    @show overlap(GOGd,Od) overlap(GOGd,GOGd) overlap(Od,Od)
-    @show overlap(GOGd, comd) overlap(comd, GOGd) 
-    @show overlap(Od, comd) overlap(comd, Od) 
-    # Now do expectation value
-    Oeval = expectation_value(O, ψ)
-    OG = O*G
-    OGeval = expectation_value(OG, ψ)
-    GOGeval = expectation_value(G*O*G, ψ)
-    function cost_eval(θ)
-        # Cost function for <ψ| U(θ)' O U(θ)|ψ>
-        return cos(θ/2)^2 * Oeval + sin(θ/2)^2 * GOGeval - 2im*cos(θ/2)*sin(θ/2)*OGeval
-    end
-
-
-    for i in 0:.01:1
-        θ = i*2π
-        U = TEO(θ)
-        cost1_ref = norm(diag(evolve(O,G,θ)))^2
-        # cost1_ref = norm(diag(U' * Omat * U))
-        cost2_ref = expectation_value(evolve(O,G,θ), ψ)
-        # cost2_ref = ψvec' * (U' * Omat * U) * ψvec
-
-        cost1_test = cost_diag(θ)
-        cost2_test = cost_eval(θ)
-
-        @printf(" %5.2f %12.8f %12.8f %12.8f %12.8f\n", θ, real(cost1_ref), real(cost1_test), real(cost2_ref), real(cost2_test))
-
-        # @show θ, cost2, cost_diag(θ/2) 
-        # @show norm(diag(O))
-        # @show norm(diag(evolve(O,G,θ)))
-    end
-
-    stepsize = .00001
-    θ1 = argmax([real(cost_diag(i*2π)) for i in 0:stepsize:1-stepsize])
-    θ2 = argmin([real(cost_eval(i*2π)) for i in 0:stepsize:1-stepsize])
-
-    @show θ1*stepsize*2π, θ2*stepsize*2π
-    @show θ1*stepsize, θ2*stepsize
+    
+    idx = argmax([real(cost(i*π)) for i in 0:stepsize:1-stepsize])
+    θ = (idx-1) * stepsize * π
+    return θ, cost
 end
-
-test1()
