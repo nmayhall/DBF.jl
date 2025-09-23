@@ -2,6 +2,7 @@ module DBF
 
 using PauliOperators
 using Printf
+using LinearAlgebra
 
 include("helpers.jl")
 include("hamiltonians.jl")
