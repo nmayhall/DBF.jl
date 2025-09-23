@@ -1,31 +1,6 @@
 using PauliOperators
 using LinearAlgebra
 
-function LinearAlgebra.norm(p::PauliSum{N,T}) where {N,T}
-    out = T(0)
-    for (p,c) in p 
-        out += abs2(c) 
-    end
-    return sqrt(out)
-end
-
-function largest_diag(ps::PauliSum{N,T}) where {N,T}
-    argmax(kv -> abs(last(kv)), filter(p->p.first.x == 0, ps))
-end
-    
-function largest(ps::PauliSum{N,T}) where {N,T}
-    max_val, max_key = findmax(v -> abs(v), ps)
-
-    return PauliSum{N,T}(max_key => ps[max_key])
-end
-    
-function LinearAlgebra.diag(ps::PauliSum{N,T}) where {N,T}
-    filter(p->p.first.x == 0, ps)
-end
-
-function offdiag(ps::PauliSum{N,T}) where {N,T}
-    filter(p->p.first.x != 0, ps)
-end
 
 
 """
@@ -54,11 +29,38 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     return cos_branch 
 end
 
-"""
-    cost_function_diagonal(O)
 
-Return norm(diag(O))
-"""
-function cost_function_diagonal(O)
-    return norm(diag(O))
+function dbf_diag(Oin::PauliSum; 
+    max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3)
+    O = deepcopy(Oin)
+    generators = Vector{PauliBasis}([])
+    angles = Vector{Float64}([])
+    norm_old = norm(diag(O))
+
+    verbose < 1 || @printf(" %6s %12s %12s G\n", "Iter", "θ", "Norm")
+    for iter in 1:max_iter
+        com = O*diag(O) - diag(O)*O
+        if length(com) == 0
+            return
+        end
+        coeff, G = findmax(v -> abs(v), com) 
+        θi, costi = DBF.optimize_theta_diagonalization(O,G,stepsize=.00001, verbose=0)
+        O = evolve(O,G,θi)
+        norm_new = norm(diag(O))
+        verbose < 1 || @printf(" %6i %12.8f %12.8f %s", iter, θi, norm_new, string(G))
+        verbose < 1 || @printf("\n")
+        push!(generators, G)
+        push!(angles, θi)
+
+        if norm_new - norm_old < conv_thresh
+            verbose < 1 || @printf(" Converged.")
+            break
+        end
+        
+        norm_old = norm_new
+        if iter == max_iter
+            verbose < 1 || @printf(" Not Converged.")
+        end
+    end
+    return O, generators, angles
 end

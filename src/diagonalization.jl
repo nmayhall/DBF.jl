@@ -10,7 +10,7 @@ function optimize_theta_diagonalization(O,G; stepsize=.001, verbose=1)
     E = overlap(Od,comd) 
     F = overlap(GOGd,comd) 
 
-    verbose == 0 || @show A, B, C, D, E
+    verbose < 2 || @show A, B, C, D, E
 
     function cost(θ)
         # C(x) = ||diag(U(x)' O U(x))||
@@ -65,5 +65,7 @@ function optimize_theta_diagonalization(O,G; stepsize=.001, verbose=1)
     
     idx = argmax([real(cost(i*π)) for i in 0:stepsize:1-stepsize])
     θ = (idx-1) * stepsize * π
+    
+    verbose < 1 || @show θ, sqrt(cost(θ))
     return θ, cost
 end
