@@ -118,11 +118,12 @@ function test1()
         # @show norm(diag(evolve(O,G,θ)))
     end
 
-    stepsize = .0001
+    stepsize = .00001
     θ1 = argmax([real(cost_diag(i*2π)) for i in 0:stepsize:1-stepsize])
     θ2 = argmin([real(cost_eval(i*2π)) for i in 0:stepsize:1-stepsize])
 
     @show θ1*stepsize*2π, θ2*stepsize*2π
+    @show θ1*stepsize, θ2*stepsize
 end
 
 test1()

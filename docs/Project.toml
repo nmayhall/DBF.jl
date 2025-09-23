@@ -1,3 +1,4 @@
 [deps]
 DBF = "05a0241d-af54-46e5-a412-7f757969bf0b"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+PauliOperators = "be646426-f34c-4536-b1d4-a45a9633e6db"
