@@ -8,6 +8,7 @@ include("helpers.jl")
 include("hamiltonians.jl")
 include("diagonalization.jl")
 include("expectation_value.jl")
+include("downfold.jl")
 include("evolve.jl")
 
 

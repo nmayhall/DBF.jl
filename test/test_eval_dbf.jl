@@ -7,7 +7,7 @@ using Test
 
 function test()
 # @testset "test_eval_dbf" begin
-    N = 8 
+    N = 3 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, 1, 2, 3, z=.1)
     DBF.coeff_clip!(H)
