@@ -13,5 +13,8 @@ include("evolve.jl")
 
 export evolve
 export inner_product
+export offdiag
+export inner_product
+export dbf_diag
 
 end

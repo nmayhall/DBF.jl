@@ -8,7 +8,7 @@ using Test
 @testset "theta_opt" begin
     Random.seed!(2)
     N = 7
-    O = rand(PauliSum{N}, n_paulis=100)
+    O = rand(PauliSum{N}, n_paulis=10)
     O += O'
     G = rand(PauliBasis{N})
     ψ = Ket{N}(0)

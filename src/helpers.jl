@@ -41,3 +41,13 @@ function LinearAlgebra.norm(p::PauliSum{N,T}) where {N,T}
     end
     return sqrt(real(out))
 end
+
+function weight(p::PauliBasis) 
+    return count_ones(p.x | p.z)
+end
+
+function coeff_clip!(ps::PauliSum{N}; thresh=1e-16) where {N}
+    filter!(p->abs(p.second) > thresh, ps)
+    # filter!(p->abs(p.second)/weight(p.first) > thresh, ps.ops)
+    # filter!(p->abs(p.second)/sqrt(weight(p.first)) > thresh, ps.ops)
+end
