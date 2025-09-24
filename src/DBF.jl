@@ -16,5 +16,6 @@ export inner_product
 export offdiag
 export inner_product
 export dbf_diag
+export dbf_eval
 
 end
