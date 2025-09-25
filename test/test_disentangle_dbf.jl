@@ -36,32 +36,38 @@ function test()
 
     @printf(" <0|H|0> = %12.8f\n", (v'*Hmat*v)[1])
     # v = reshape(v[:,1], ntuple(i->2, N))
-    v = reshape(v[:,1], (2^(N-M), 2^M))
+    v = reshape(v[:,1], (2^M, 2^(N-M)))
     @show size(v)
     Using,Ssing,Vsing = svd(v)
     println(" Singular Values of V")
     for i in Ssing
         @printf(" %12.8f\n",i)
     end
-    return
+    @printf(" Entropy: %12.8f\n", sum([-p^2*log(p^2) for p in Ssing]))
 
     evals1 = eigvals(Matrix(H))
-    evals2 = eigvals(Matrix(diag(H)))
+    evals2 = eigvals(Matrix(DBF.p_space(H,M)))
     @printf(" ||H||  = %12.8f\n", norm(H))
-    @printf(" ||Hd|| = %12.8f\n", norm(diag(H)))
-    @printf(" ||Ho|| = %12.8f\n", norm(DBF.offdiag(H)))
-    H, gi, θi = dbf_diag(H, max_iter=1000, conv_thresh=1e-7, evolve_coeff_thresh=1e-4)
-    
-    println(" New H:")
-    display(H)
-    evals3 = eigvals(Matrix(H))
-    evals4 = eigvals(Matrix(diag(H)))
-    @printf(" %3s %12s %12s %12s %12s\n", "Idx", "H", "diag(H)", "U'HU", "diag(U'HU)")
-    for i in 1:2^N
-        @printf(" %3i %12.8f %12.8f %12.8f %12.8f\n", i, evals1[i], evals2[i], evals3[i], evals4[i])
-        @test isapprox(evals1[i], evals3[i], atol=1e-5)
-        @test isapprox(evals3[i], evals4[i], atol=1e-5)
+    @printf(" ||Hp|| = %12.8f\n", norm(DBF.p_space(H,M)))
+    @printf(" ||Hq|| = %12.8f\n", norm(DBF.q_space(H,M)))
+    H, gi, θi = dbf_disentangle(H, M, max_iter=1000, conv_thresh=1e-7, evolve_coeff_thresh=1e-6)
+   
+    Hmat = Matrix(H)
+    e,v = eigen(Hmat)
+    # println(" Eigenvalues of H")
+    # for i in e 
+    #     @printf(" %12.8f\n",i)
+    # end
+    @printf(" <0|H|0> = %12.8f\n", (v'*Hmat*v)[1])
+    # v = reshape(v[:,1], ntuple(i->2, N))
+    v = reshape(v[:,1], (2^M, 2^(N-M)))
+    @show size(v)
+    Using,Ssing,Vsing = svd(v)
+    println(" Singular Values of V")
+    for i in Ssing
+        @printf(" %12.8f\n",i)
     end
+    @printf(" Entropy: %12.8f\n", sum([-p^2*log(p^2) for p in Ssing]))
 end
 
 test()

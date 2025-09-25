@@ -8,7 +8,7 @@ include("helpers.jl")
 include("hamiltonians.jl")
 include("diagonalization.jl")
 include("expectation_value.jl")
-include("downfold.jl")
+include("disentangle.jl")
 include("evolve.jl")
 
 
@@ -18,5 +18,6 @@ export offdiag
 export inner_product
 export dbf_diag
 export dbf_eval
+export dbf_disentangle
 
 end
