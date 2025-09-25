@@ -194,3 +194,18 @@ function dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N};
     end
     return O, generators, angles
 end
+
+
+"""
+    dissipate!(O::PauliSum, lmax::Int, γ::Real)
+
+Apply dissipator to `O`, damping at a rate `γ` operators with 
+weight greater than `lmax`
+"""
+function dissipate!(O::PauliSum, lmax::Int, γ::Real)
+    for (p,c) in O 
+        if weight(p) > lmax 
+            O[p] = exp(-γ*(weight(p)-lmax))*c
+        end 
+    end
+end
