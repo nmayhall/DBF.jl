@@ -81,7 +81,9 @@ Compute the double bracket flow for diagonalization of `Oin`
 """
 function dbf_diag(Oin::PauliSum{N,T}; 
     max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-    evolve_coeff_thresh=1e-12) where {N,T}
+    evolve_coeff_thresh=1e-12,
+    evolve_weigth_thresh=20,
+    bracket_thresh=1e-8) where {N,T}
     O = deepcopy(Oin)
     generators = Vector{PauliBasis}([])
     angles = Vector{Float64}([])
@@ -89,21 +91,29 @@ function dbf_diag(Oin::PauliSum{N,T};
 
     local_Z = PauliSum(N)
     for i in 1:N 
-        local_Z += Pauli(N, Z=[i])
+        local_Z += Pauli(N, Z=[i])*rand()
         for j in i+1:N 
-            local_Z += Pauli(N, Z=[i,j])
+            local_Z += Pauli(N, Z=[i,j])*rand()
         end
     end
     G_old = Pauli(N)
 
-    display(local_Z)
+    # display(local_Z)
 
     verbose < 1 || @printf(" %6s %12s %12s %12s %12s G\n", "Iter", "θ", "|O|", "|od(O)|", "len(O)")
     for iter in 1:max_iter
-        source = local_Z
-        source = diag(O) + local_Z
-        # source = diag(O)
-        com = O*source - source*O
+        S = local_Z
+        S = diag(O) + local_Z
+        # S = diag(O)
+
+        # this commutator seems to be the most expensive part at first.
+        # Simplest thing to do is to just clip both before computing the 
+        # Commutator, as the max commutator coomponent will most likely 
+        # still be in here
+        # old: 
+        # com = O*S - S*O
+        com = max_of_commutator(O,S,clip=bracket_thresh)
+
         coeff_clip!(com)
         if length(com) == 0
             println(" [H,diag] == 0 Exiting. ")
@@ -113,6 +123,7 @@ function dbf_diag(Oin::PauliSum{N,T};
         θi, costi = DBF.optimize_theta_diagonalization(O,G,stepsize=.000001, verbose=0)
         O = evolve(O,G,θi)
         coeff_clip!(O, thresh=evolve_coeff_thresh)
+        weight_clip!(O, evolve_weigth_thresh)
 
         norm_new = norm(offdiag(O))
         # if norm_new - costi(θi) > 1e-12

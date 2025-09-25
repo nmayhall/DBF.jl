@@ -50,6 +50,10 @@ function coeff_clip!(ps::PauliSum{N}; thresh=1e-16) where {N}
     filter!(p->abs(p.second) > thresh, ps)
 end
 
+function coeff_clip(ps::PauliSum{N}; thresh=1e-16) where {N}
+    return filter(p->abs(p.second) > thresh, ps)
+end
+
 function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
     filter!(p->weight(p.first) <= max_weight, ps)
 end
@@ -87,4 +91,32 @@ function meanfield_reduce!(O::PauliSum{N},s, weightclip) where N
         end
     end 
     O += tmp
+end
+
+function max_of_commutator(A::PauliSum{N},B::PauliSum{N};clip=1e-8) where N
+    curr_key = Pauli{N}(0,0,0)
+    curr_val = 0
+    out = PauliSum(N)
+    sizehint!(out, min(1000, length(A) * length(B) ÷ 4))
+    for (p1,c1) in A
+        abs(c1) > clip || continue
+
+        for (p2,c2) in B
+            abs(c2) > clip || continue
+            if PauliOperators.commute(p1,p2) == false
+                prod = 2*c1*c2*(p1*p2)
+                # out += 2*c1*c2*(p1*p2)
+                curr = get(out, PauliBasis(prod), 0.0) + PauliOperators.coeff(prod)
+                
+                out[PauliBasis(prod)] = curr 
+                # if abs(prod) > abs(curr_val)
+                #     curr_val = prod
+                #     curr_key = 2*p1*p2
+                # end
+            end
+        end
+    end
+    coeff, G = findmax(v -> abs(v), out) 
+    return PauliSum(coeff*G)
+    # return PauliSum(curr_key*curr_val)
 end
