@@ -33,7 +33,7 @@ end
 function test()
     Random.seed!(2)
 
-    N = 6
+    N = 10 
     p = PauliBasis("IIYZXZ")
     s = DyadSum(N)
     for i in 1:1
@@ -64,14 +64,14 @@ function test()
     O2 = deepcopy(O)
   
     diff = []
-    for trot in 1:4
+    for trot in 1:10
         for i in 1:length(generators)
             gi = generators[i]
             ai = angles[i]
             O2 = evolve(O2, gi, ai)
             O = evolve(O, gi, ai)
-            # DBF.weight_clip!(O, 2)
-            DBF.meanfield_reduce!(O,s,2)
+            DBF.weight_clip!(O, 2)
+            # DBF.meanfield_reduce!(O,s,2)
             DBF.coeff_clip!(O, thresh=1e-4)
             e = expectation_value(O,s)
             e2 = expectation_value(O2,s)

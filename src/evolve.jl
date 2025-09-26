@@ -33,3 +33,16 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     return cos_branch 
 end
 
+"""
+    dissipate!(O::PauliSum, lmax::Int, γ::Real)
+
+Apply dissipator to `O`, damping at a rate `γ` operators with
+weight greater than `lmax`
+"""
+function dissipate!(O::PauliSum, lmax::Int, γ::Real)
+    for (p,c) in O
+        if weight(p) > lmax
+            O[p] = exp(-γ*(weight(p)-lmax))*c
+        end
+    end
+end
