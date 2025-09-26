@@ -145,3 +145,55 @@ function find_top_k(dict, k=10)
     return [top_keys[p[i]] => top_vals[p[i]] for i in 1:n_found]
 end
 
+function find_top_k_offdiag(dict, k=10)
+    """Optimized for when k << length(dict)"""
+    
+    # Pre-allocate arrays
+    top_keys = Vector{keytype(dict)}(undef, k)
+    top_vals = Vector{valtype(dict)}(undef, k) 
+    top_abs = Vector{Float64}(undef, k)
+    
+    n_found = 0
+    min_val = 0.0
+    min_idx = 1
+    
+    @inbounds for (key, val) in dict
+        key.x != 0 || continue
+        abs_val = abs(val)
+        
+        if n_found < k
+            # Still filling up
+            n_found += 1
+            top_keys[n_found] = key
+            top_vals[n_found] = val  
+            top_abs[n_found] = abs_val
+            
+            # Update minimum
+            if abs_val < min_val || n_found == 1
+                min_val = abs_val
+                min_idx = n_found
+            end
+            
+        elseif abs_val > min_val
+            # Replace minimum
+            top_keys[min_idx] = key
+            top_vals[min_idx] = val
+            top_abs[min_idx] = abs_val
+            
+            # Find new minimum
+            min_val = top_abs[1]
+            min_idx = 1
+            for i in 2:k
+                if top_abs[i] < min_val
+                    min_val = top_abs[i]
+                    min_idx = i
+                end
+            end
+        end
+    end
+    
+    # Sort the results
+    p = sortperm(view(top_abs, 1:n_found), rev=true)
+    return [top_keys[p[i]] => top_vals[p[i]] for i in 1:n_found]
+end
+

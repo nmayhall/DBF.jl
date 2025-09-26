@@ -22,7 +22,11 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     for (p,c) in O
         if PauliOperators.commute(p,G) == false
             cos_branch[p] *= _cos
-            sum!(sin_branch, c*_sin*G*p)
+            # replace sum! with more efficient version
+            # sum!(sin_branch, c*_sin*G*p)
+            tmp = c*_sin*G*p
+            curr = get(sin_branch, PauliBasis(tmp), 0.0) + PauliOperators.coeff(tmp)
+            sin_branch[PauliBasis(tmp)] = curr 
         end
     end
     sum!(cos_branch, sin_branch)
