@@ -8,4 +8,6 @@ using Test
     include("test_theta_opt.jl")
     include("test_evolve.jl")
     include("test_diag_dbf.jl")
+    include("test_groundstate_dbf.jl")
+    include("test_adapt.jl")
 end

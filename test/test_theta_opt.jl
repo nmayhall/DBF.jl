@@ -21,7 +21,7 @@ using Test
     θ_diag, cost_diag = DBF.optimize_theta_diagonalization(O,G; verbose=0)
     @show θ_diag, cost_diag(θ_diag)
 
-    θ_eval, cost_eval = DBF.optimize_theta_expval(O, G, ψ; stepsize=step, verbose=0)
+    θ_eval, cost_eval = DBF.optimize_theta_expval(O, G, ψ; verbose=0)
     @show θ_eval, cost_eval(θ_eval)
 
     θ_dtgl, cost_dtgl = DBF.optimize_theta_disentangle(O, G, split_idx; stepsize=step, verbose=0)
