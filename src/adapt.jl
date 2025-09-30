@@ -1,3 +1,5 @@
+using PauliOperators
+
 """
     dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
     max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
@@ -24,10 +26,12 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     for iter in 1:max_iter
         
 
-        # Compute gradient vector 
+        # Compute gradient vector
         for (pi,p) in enumerate(pool)
-            dyad = (ψ * ψ') * p'
-            grad_vec[pi] = 2*imag(expectation_value(O,dyad))
+            # dyad = (ψ * ψ') * p'
+            # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
+            c, σ = p*ψ
+            grad_vec[pi] = 2*imag(matrix_element(σ', O, ψ)*c)
         end
         
         Gidx = argmax(abs.(grad_vec))
@@ -48,8 +52,12 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         #     end
         #     break
         # end
-        
-        # θi, costi = DBF.optimize_theta_expval(O, G, ψ, stepsize=.000001, verbose=0)
+       
+        sorted_idx = reverse(sortperm(abs.(grad_vec)))[1:10]
+
+        for gi in sorted_idx
+
+            G = pool[gi]
         θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
         O = evolve(O,G,θi)
         coeff_clip!(O, thresh=evolve_coeff_thresh)
@@ -67,6 +75,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         push!(generators, G)
         push!(angles, θi)
 
+        end
         # if norm_new - norm_old < conv_thresh
         if norm_new < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
@@ -117,6 +126,26 @@ function generate_pool_2_weight(N)
     end
     return pool
 end
+
+# function generate_pool_3_weight(N)
+#     pool = Vector{PauliBasis{N}}([])
+#     for i in 1:N
+#         for j in i+1:N
+#             for j in i+1:N
+#                 push!(pool,PauliBasis(Pauli(N,X=[i,j,k])))
+#                 push!(pool,PauliBasis(Pauli(N,Y=[i,j,k])))
+#                 push!(pool,PauliBasis(Pauli(N,Z=[i,j,k])))
+#                 push!(pool,PauliBasis(Pauli(N,X=[i],Y=[j])))
+#                 push!(pool,PauliBasis(Pauli(N,X=[i],Z=[j])))
+#                 push!(pool,PauliBasis(Pauli(N,Y=[i],Z=[j])))
+#                 push!(pool,PauliBasis(Pauli(N,Y=[i],X=[j])))
+#                 push!(pool,PauliBasis(Pauli(N,Z=[i],X=[j])))
+#                 push!(pool,PauliBasis(Pauli(N,Z=[i],Y=[j])))
+#             end
+#         end
+#     end
+#     return pool
+# end
 
 
 # function matrix_element(b::Bra{N}, p::PauliBasis{N}, k::Ket{N}) where N
