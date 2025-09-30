@@ -53,6 +53,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
         O = evolve(O,G,θi)
         coeff_clip!(O, thresh=evolve_coeff_thresh)
+        weight_clip!(O, evolve_weight_thresh)
 
         # if norm_new - costi(θi) > 1e-12
         #     @show norm_new - costi(θi)
@@ -116,3 +117,31 @@ function generate_pool_2_weight(N)
     end
     return pool
 end
+
+
+# function matrix_element(b::Bra{N}, p::PauliBasis{N}, k::Ket{N}) where N
+#     # <b| ZZZ...*XXX...|k> (1im)^sp
+#     sgn = count_ones(p.z & b.v)  # sgn <j| = <j| z 
+#     val = k.v ⊻ b.v == p.x # <j|x|i>
+#     if val
+#         return (-1)^sgn * 1im^symplectic_phase(p)
+#     else
+#         return 0
+#     end 
+#     # sgn1 = 1
+#     # phs1 = 1
+#     # if sgn % 2 != 0
+#     #     sgn1 = -1
+#     # end
+#     # sp = symplectic_phase(p)
+#     # if sp == 1
+#     #     phs1 = 1im
+#     # elseif sp == 2
+#     #     phs1 = -1
+#     # elseif sp == 3
+#     #     phs1 = -1im
+#     # end
+
+#     # return sgn1 * phs1 * val * coeff(p) * coeff(d)
+#     # # return (-1)^sgn * val * coeff(p) * coeff(d) * 1im^symplectic_phase(p)
+# end

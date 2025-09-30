@@ -26,10 +26,10 @@ function run()
 
     display(norm(H))
     display(norm(diag(H)))
-    H, gi, θi = dbf_groundstate(H, ψ, max_iter=1000, conv_thresh=1e-3, 
-        evolve_coeff_thresh=1e-4,
-        evolve_weigth_thresh=3,
-        search_n_top=100)
+    H, gi, θi = dbf_groundstate(H, ψ, max_iter=120, conv_thresh=1e-3, 
+                                evolve_coeff_thresh=1e-4,
+                                evolve_weight_thresh=3,
+                                search_n_top=100)
     
     println(" New H:")
     display(norm(H))
