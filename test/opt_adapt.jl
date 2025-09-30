@@ -6,7 +6,7 @@ using LinearAlgebra
 using Test
 
 function run()
-    N = 50 
+    N = 10 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, -1, -1, -1, z=.1)
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
@@ -16,9 +16,15 @@ function run()
     println(" Original H:")
     # display(H)
     
+    Hmat = Matrix(H)
+    evals = eigvals(Hmat)
+   
+    @show minimum(evals)
+   
+
     ψ = Ket([i%2 for i in 1:N])
-    # kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
-    # ψ = Ket{N}(kidx)
+    kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
+    ψ = Ket{N}(kidx)
     display(ψ)
     e0 = expectation_value(H,ψ)
    
@@ -27,6 +33,8 @@ function run()
     pool1 = DBF.generate_pool_1_weight(N)
     pool2 = DBF.generate_pool_2_weight(N)
     pool = vcat(pool1, pool2)
+    
+    @show DBF.variance(H,ψ)
 
     H, gi, θi = adapt(H, pool, ψ, 
                     max_iter=120, conv_thresh=1e-3, 
@@ -36,7 +44,9 @@ function run()
     
     e1 = expectation_value(H,ψ)
     
-    @printf(" E1 = %12.8f\n", e1)
+    @printf(" E = %12.8f\n", e1)
+    
+    @show DBF.variance(H,ψ)
 
 end
 

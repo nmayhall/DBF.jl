@@ -35,10 +35,10 @@ function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; v
     θ < 2π || throw(DomainError)
     θ > 0 || throw(DomainError)
 
-    if cost(θ) > cost(0)
-        @warn " optimal θ worse than zero" θ cost(θ)  cost(0) cost(θ) - cost(0) "resetting"
-        θ = 0
-    end
+    # if cost(θ) > cost(0)
+    #     @warn " optimal θ worse than zero" θ cost(θ)  cost(0) cost(θ) - cost(0) "resetting"
+    #     θ = 0
+    # end
     stepsize = 1e-5
     # idx = argmax([cost(i*π) for i in 0:stepsize:1-stepsize])
     # θ = (idx-1) * stepsize * π

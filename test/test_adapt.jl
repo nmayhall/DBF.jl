@@ -27,6 +27,8 @@ using Test
     pool1 = DBF.generate_pool_1_weight(N)
     pool2 = DBF.generate_pool_2_weight(N)
     pool = vcat(pool1, pool2)
+    
+    @show DBF.variance(H,ψ)
 
     H, gi, θi = adapt(H, pool, ψ, 
                     max_iter=20, conv_thresh=1e-3, 
@@ -44,6 +46,8 @@ using Test
         @test isapprox(evals1[i], evals3[i], atol=1e-8)
     end
     @test isapprox(evals1[1], evals4[1], atol=1e-8)
+    
+    @test abs(DBF.variance(H,ψ)) < 1e-6
 end
 
 # test()

@@ -23,6 +23,8 @@ using Test
     e2 = real(expectation_value(H,ψ))
     evals1 = eigvals(Matrix(H))
     evals2 = eigvals(Matrix(diag(H)))
+    
+    @show DBF.variance(H,ψ)
 
     H, gi, θi = dbf_groundstate(H, ψ, max_iter=20, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-4,
@@ -40,6 +42,7 @@ using Test
         @test isapprox(evals1[i], evals3[i], atol=1e-8)
     end
     @test isapprox(evals1[1], evals4[1], atol=1e-8)
+    @test abs(DBF.variance(H,ψ)) < 1e-6
 end
 
 # test()

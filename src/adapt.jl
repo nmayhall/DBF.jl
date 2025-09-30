@@ -11,18 +11,24 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
             evolve_weight_thresh=20,
+            evolve_grad_thresh=1e-8,
             extra_diag=nothing) where {N,T}
     O = deepcopy(Oin)
     generators = Vector{PauliBasis}([])
     angles = Vector{Float64}([])
     norm_old = norm(offdiag(O))
+            
+    ecurr = expectation_value(O, ψ) 
 
     G_old = Pauli(N)
 
     grad_vec = zeros(length(pool))
 
     verbose < 1 || @printf(" %6s %12s %12s", "Iter", "|O|", "<ψ|O|ψ>")
-    verbose < 1 || @printf(" %12s %12s %12s G\n", "norm(g)", "len(O)", "θ")
+    verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
+    verbose < 1 || @printf(" %12s", "# Rotations")
+    verbose < 1 || @printf(" %12s %12s %12s", "norm(g)", "len(O)", "θ")
+    verbose < 1 || @printf("\n")
     for iter in 1:max_iter
         
 
@@ -53,29 +59,51 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         #     break
         # end
        
-        sorted_idx = reverse(sortperm(abs.(grad_vec)))[1:10]
+        sorted_idx = reverse(sortperm(abs.(grad_vec)))
 
+        verbose < 2 || @printf("     %8s %12s %12s", "pool idx", "||O||", "<ψ|H|ψ>")
+        verbose < 2 || @printf(" %12s %12s %s", "len(O)", "θi", string(G))
+        verbose < 2 || @printf("\n")
+        n_rots = 0
         for gi in sorted_idx
 
+            #
+            # make sure gradient is non-negligible
+            abs(grad_vec[gi]) > evolve_grad_thresh || continue
+
             G = pool[gi]
-        θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
-        O = evolve(O,G,θi)
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
-        weight_clip!(O, evolve_weight_thresh)
+            θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
+           
+            #
+            # make sure energy lowering is large enough to warrent evolving
+            abs(costi(0) - costi(θi)) > evolve_grad_thresh || continue
+           
 
-        # if norm_new - costi(θi) > 1e-12
-        #     @show norm_new - costi(θi)
-        #     throw(ErrorException)
-        # end
-        # norm_new = costi(θi)/O_norm
-        ecurr = expectation_value(O, ψ) 
-        verbose < 1 || @printf(" %6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
-        verbose < 1 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
-        verbose < 1 || @printf("\n")
-        push!(generators, G)
-        push!(angles, θi)
+            O = evolve(O,G,θi)
 
+            #
+            # Truncate operator
+            coeff_clip!(O, thresh=evolve_coeff_thresh)
+            weight_clip!(O, evolve_weight_thresh)
+
+            # if norm_new - costi(θi) > 1e-12
+            #     @show norm_new - costi(θi)
+            #     throw(ErrorException)
+            # end
+            # norm_new = costi(θi)/O_norm
+            ecurr = expectation_value(O, ψ) 
+            verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
+            verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
+            verbose < 2 || @printf("\n")
+            push!(generators, G)
+            push!(angles, θi)
+            n_rots += 1
         end
+        verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
+        verbose < 1 || @printf(" %12i", n_rots)
+        verbose < 1 || @printf(" %12i", length(O))
+        verbose < 1 || @printf("\n")
+        
         # if norm_new - norm_old < conv_thresh
         if norm_new < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
@@ -89,13 +117,37 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         if iter == max_iter
             verbose < 1 || @printf(" Not Converged.\n")
         end
-        
+      
+        if n_rots == 0
+            @warn """ No search directions found. 
+                    Tighten `evolve_grad_thresh` or expand pool"""
+            break
+        end
         norm_old = norm_new
-        G_old = G
+        # G_old = G
     end
     return O, generators, angles
 end
 
+function variance(O::PauliSum{N}, ψ::Ket{N}) where N
+    σ = KetSum(N)
+    for (p,ci) in O
+        cj, ki = p*ψ
+        # σ[ki] += cj*ci
+        curr = get(σ, ki, 0.0) + cj*ci
+        σ[ki] = curr 
+    end 
+    
+    # @show norm(Vector(σ)), norm(Matrix(O)*Vector(ψ))
+    e2 = 0
+    for (k,v) in σ 
+        e2 += v'*v
+    end
+
+    e1 = expectation_value(O,ψ)
+
+    return e2 - e1^2
+end
 
 
 
