@@ -99,6 +99,10 @@ function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
     filter!(p->weight(p.first) <= max_weight, ps)
 end
 
+function majorana_weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
+    filter!(p->majorana_weight(p.first) <= max_weight, ps)
+end
+
 function reduce_by_1body(p::PauliBasis{N}, ψ) where N
     out = PauliSum(N)
     # for i in 1:N
