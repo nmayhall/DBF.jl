@@ -30,6 +30,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
     verbose < 1 || @printf(" %12s", "# Rotations")
     verbose < 1 || @printf(" %12s", "len(H)")
+    verbose < 1 || @printf(" %12s", "total_error")
     verbose < 1 || @printf("\n")
     for iter in 1:max_iter
         
