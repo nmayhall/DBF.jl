@@ -7,7 +7,9 @@ using LinearAlgebra
 include("helpers.jl")
 include("hamiltonians.jl")
 include("diagonalization.jl")
-include("expectation_value.jl")
+include("groundstate.jl")
+include("disentangle.jl")
+include("adapt.jl")
 include("evolve.jl")
 
 
@@ -16,6 +18,8 @@ export inner_product
 export offdiag
 export inner_product
 export dbf_diag
-export dbf_eval
+export dbf_groundstate
+export dbf_disentangle
+export adapt 
 
 end

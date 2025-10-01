@@ -5,9 +5,9 @@ using Random
 using LinearAlgebra
 using Test
 
-function test()
-# @testset "test_eval_dbf" begin
-    N = 8 
+# function test()
+@testset "test_adapt" begin
+    N = 3 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, 1, 2, 3, z=.1)
     DBF.coeff_clip!(H)
@@ -23,8 +23,16 @@ function test()
     e2 = real(expectation_value(H,ψ))
     evals1 = eigvals(Matrix(H))
     evals2 = eigvals(Matrix(diag(H)))
+    
+    pool1 = DBF.generate_pool_1_weight(N)
+    pool2 = DBF.generate_pool_2_weight(N)
+    pool = vcat(pool1, pool2)
+    
+    @show DBF.variance(H,ψ)
 
-    H, gi, θi = dbf_eval(H, ψ, max_iter=20, conv_thresh=1e-3, evolve_coeff_thresh=1e-4)
+    H, gi, θi = adapt(H, pool, ψ, 
+                    max_iter=20, conv_thresh=1e-3, 
+                    evolve_coeff_thresh=1e-4)
    
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
@@ -35,7 +43,11 @@ function test()
     @printf(" %3s %12s %12s %12s %12s\n", "Idx", "H", "diag(H)", "U'HU", "diag(U'HU)")
     for i in 1:2^N
         @printf(" %3i %12.8f %12.8f %12.8f %12.8f\n", i, evals1[i], evals2[i], evals3[i], evals4[i])
+        @test isapprox(evals1[i], evals3[i], atol=1e-8)
     end
+    @test isapprox(evals1[1], evals4[1], atol=1e-8)
+    
+    @test abs(DBF.variance(H,ψ)) < 1e-6
 end
 
-test()
+# test()

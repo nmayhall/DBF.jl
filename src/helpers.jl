@@ -48,6 +48,153 @@ end
 
 function coeff_clip!(ps::PauliSum{N}; thresh=1e-16) where {N}
     filter!(p->abs(p.second) > thresh, ps)
-    # filter!(p->abs(p.second)/weight(p.first) > thresh, ps.ops)
-    # filter!(p->abs(p.second)/sqrt(weight(p.first)) > thresh, ps.ops)
 end
+
+function coeff_clip(ps::PauliSum{N}; thresh=1e-16) where {N}
+    return filter(p->abs(p.second) > thresh, ps)
+end
+
+function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
+    filter!(p->weight(p.first) <= max_weight, ps)
+end
+
+function reduce_by_1body(p::PauliBasis{N}, ψ) where N
+    out = PauliSum(N)
+    # for i in 1:N
+    n_terms = length(PauliOperators.get_on_bits(p.z|p.x)) 
+    for i in PauliOperators.get_on_bits(p.z|p.x) 
+        mask = 1 << (i - 1) 
+        tmp1 = PauliBasis{N}(p.z & ~mask, p.x & ~mask)
+        tmp2 = PauliBasis{N}(p.z & mask, p.x & mask)
+        tmp3 = tmp1*tmp2
+        if isapprox(coeff(tmp3), 1) == false || PauliBasis(tmp3) != p
+            throw(ErrorException)
+        end 
+        # println(string(tmp1), "*", string(tmp2), "=", string(tmp1*tmp2))
+        out += tmp1 * (expectation_value(tmp2, ψ) / n_terms)
+        out += tmp1 * (expectation_value(tmp2, ψ) / n_terms)
+        # display(PauliBasis{N}(p.z & ~mask, p.x & ~mask))
+    end
+    out = out * (1/norm(out))
+    # for (p,c) in out
+    #     println(string(p), " ", weight(p))
+    # end
+    return out
+end
+
+function meanfield_reduce!(O::PauliSum{N},s, weightclip) where N
+    tmp = PauliSum(N)
+    for (p,c) in O
+        if weight(p) > weightclip 
+            tmp += reduce_by_1body(p,s)
+            O[p] = 0
+        end
+    end 
+    O += tmp
+end
+
+
+function find_top_k(dict, k=10)
+    """Optimized for when k << length(dict)"""
+    
+    # Pre-allocate arrays
+    top_keys = Vector{keytype(dict)}(undef, k)
+    top_vals = Vector{valtype(dict)}(undef, k) 
+    top_abs = Vector{Float64}(undef, k)
+    
+    n_found = 0
+    min_val = 0.0
+    min_idx = 1
+    
+    @inbounds for (key, val) in dict
+        abs_val = abs(val)
+        
+        if n_found < k
+            # Still filling up
+            n_found += 1
+            top_keys[n_found] = key
+            top_vals[n_found] = val  
+            top_abs[n_found] = abs_val
+            
+            # Update minimum
+            if abs_val < min_val || n_found == 1
+                min_val = abs_val
+                min_idx = n_found
+            end
+            
+        elseif abs_val > min_val
+            # Replace minimum
+            top_keys[min_idx] = key
+            top_vals[min_idx] = val
+            top_abs[min_idx] = abs_val
+            
+            # Find new minimum
+            min_val = top_abs[1]
+            min_idx = 1
+            for i in 2:k
+                if top_abs[i] < min_val
+                    min_val = top_abs[i]
+                    min_idx = i
+                end
+            end
+        end
+    end
+    
+    # Sort the results
+    p = sortperm(view(top_abs, 1:n_found), rev=true)
+    return [top_keys[p[i]] => top_vals[p[i]] for i in 1:n_found]
+end
+
+function find_top_k_offdiag(dict, k=10)
+    """Optimized for when k << length(dict)"""
+    
+    # Pre-allocate arrays
+    top_keys = Vector{keytype(dict)}(undef, k)
+    top_vals = Vector{valtype(dict)}(undef, k) 
+    top_abs = Vector{Float64}(undef, k)
+    
+    n_found = 0
+    min_val = 0.0
+    min_idx = 1
+    
+    @inbounds for (key, val) in dict
+        key.x != 0 || continue
+        abs_val = abs(val)
+        
+        if n_found < k
+            # Still filling up
+            n_found += 1
+            top_keys[n_found] = key
+            top_vals[n_found] = val  
+            top_abs[n_found] = abs_val
+            
+            # Update minimum
+            if abs_val < min_val || n_found == 1
+                min_val = abs_val
+                min_idx = n_found
+            end
+            
+        elseif abs_val > min_val
+            # Replace minimum
+            top_keys[min_idx] = key
+            top_vals[min_idx] = val
+            top_abs[min_idx] = abs_val
+            
+            # Find new minimum
+            min_val = top_abs[1]
+            min_idx = 1
+            for i in 2:k
+                if top_abs[i] < min_val
+                    min_val = top_abs[i]
+                    min_idx = i
+                end
+            end
+        end
+    end
+    
+    # Sort the results
+    p = sortperm(view(top_abs, 1:n_found), rev=true)
+    return [top_keys[p[i]] => top_vals[p[i]] for i in 1:n_found]
+end
+
+
