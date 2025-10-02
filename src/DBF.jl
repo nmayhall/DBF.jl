@@ -11,6 +11,7 @@ include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
 include("evolve.jl")
+include("rk4.jl")
 
 
 export evolve
