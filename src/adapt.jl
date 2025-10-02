@@ -188,6 +188,11 @@ function generate_pool_3_weight(N)
             end
         end
     end
+    return pool
+end
+
+function generate_pool_4_weight(N)
+    pool = Vector{PauliBasis{N}}([])
     for i in 1:N
         for j in i+1:N
             for k in j+1:N
@@ -197,6 +202,12 @@ function generate_pool_3_weight(N)
             end
         end
     end
+    return pool
+end
+
+
+function generate_pool_5_weight(N)
+    pool = Vector{PauliBasis{N}}([])
     for i in 1:N
         for j in i+1:N
             for k in j+1:N
