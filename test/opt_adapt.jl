@@ -6,20 +6,22 @@ using LinearAlgebra
 using Test
 
 function run()
-    N = 49 
+    # N = 49 
+    N = 9 
     Random.seed!(2)
     # H = DBF.heisenberg_1D(N, -1, -2, -3, z=.1)
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
-    H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
+    # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
+    H = DBF.heisenberg_2D(9, 1, -0, -0, -1, x=.1)
     DBF.coeff_clip!(H)
 
     println(" Original H:")
     # display(H)
     
-    # Hmat = Matrix(H)
-    # evals = eigvals(Hmat)
+    Hmat = Matrix(H)
+    evals = eigvals(Hmat)
    
-    # @show minimum(evals)
+    @show minimum(evals)
    
 
     ψ = Ket([i%2 for i in 1:N])
@@ -35,13 +37,19 @@ function run()
     pool = vcat(pool, DBF.generate_pool_3_weight(N))
     pool = vcat(pool, DBF.generate_pool_4_weight(N))
     pool = vcat(pool, DBF.generate_pool_5_weight(N))
+    pool = vcat(pool, DBF.generate_pool_6_weight(N))
 
     # search_n_top = 100
     # # pool = DBF.pool_test1(H)
     # pool = DBF.max_of_commutator2(H, H, n_top=search_n_top)
     # DBF.coeff_clip!(pool)
     # pool = [first(x) for x in sort(collect(pool), by = x -> abs(last(x)))]
-    
+  
+    # for i in 1:4
+    # pool = H*diag(H)-diag(H)*H
+    # DBF.coeff_clip!(pool)
+    # pool = [first(x) for x in sort(collect(pool), by = x -> abs(last(x)))]
+
     @printf(" Size of pool: %12i\n", length(pool))
     
     @show DBF.variance(H,ψ)
@@ -51,10 +59,10 @@ function run()
     H, gi, θi = adapt(H, pool, ψ, 
                     max_iter=120, conv_thresh=1e-3, 
                     evolve_weight_thresh=8,
-                    evolve_coeff_thresh=1e-4)
+                    evolve_coeff_thresh=1e-5)
     
     
-    
+    # end
     # println("")
     # println(" Now update pool")
     # pool = DBF.max_of_commutator2(H, H, n_top=search_n_top)

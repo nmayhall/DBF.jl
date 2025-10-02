@@ -31,6 +31,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "# Rotations")
     verbose < 1 || @printf(" %12s", "len(H)")
     verbose < 1 || @printf(" %12s", "total_error")
+    verbose < 1 || @printf(" %12s", "variance")
     verbose < 1 || @printf("\n")
     for iter in 1:max_iter
         
@@ -106,10 +107,12 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             n_rots += 1
             flush(stdout)
         end
+        var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
         verbose < 1 || @printf(" %12i", n_rots)
         verbose < 1 || @printf(" %12i", length(O))
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", real(var_curr))
         verbose < 1 || @printf("\n")
         
         # if norm_new - norm_old < conv_thresh
@@ -199,6 +202,7 @@ function generate_pool_4_weight(N)
             for k in j+1:N
                 for l in k+1:N
                     push!(pool,PauliBasis(Pauli(N,Y=[i], X=[j,k,l])))
+                    push!(pool,PauliBasis(Pauli(N,X=[i], Y=[j,k,l])))
                 end
             end
         end
@@ -215,6 +219,25 @@ function generate_pool_5_weight(N)
                 for l in k+1:N
                     for m in l+1:N
                         push!(pool,PauliBasis(Pauli(N,Y=[i], X=[j,k,l,m])))
+                    end
+                end
+            end
+        end
+    end
+    return pool
+end
+
+
+function generate_pool_6_weight(N)
+    pool = Vector{PauliBasis{N}}([])
+    for i in 1:N
+        for j in i+1:N
+            for k in j+1:N
+                for l in k+1:N
+                    for m in l+1:N
+                        for n in m+1:N
+                            push!(pool,PauliBasis(Pauli(N,Y=[i], X=[j,k,l,m,n])))
+                        end
                     end
                 end
             end
