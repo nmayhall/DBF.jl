@@ -104,6 +104,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             push!(generators, G)
             push!(angles, θi)
             n_rots += 1
+            flush(stdout)
         end
         verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
         verbose < 1 || @printf(" %12i", n_rots)

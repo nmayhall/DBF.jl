@@ -30,11 +30,11 @@ function run()
    
     @printf(" E0 = %12.8f\n", e0)
 
-    pool1 = DBF.generate_pool_1_weight(N)
-    pool2 = DBF.generate_pool_2_weight(N)
-    pool3 = DBF.generate_pool_3_weight(N)
-    pool = vcat(pool1, pool2)
-    pool = vcat(pool1, pool2, pool3)
+    pool = DBF.generate_pool_1_weight(N)
+    pool = vcat(pool, DBF.generate_pool_2_weight(N))
+    pool = vcat(pool, DBF.generate_pool_3_weight(N))
+    pool = vcat(pool, DBF.generate_pool_4_weight(N))
+    pool = vcat(pool, DBF.generate_pool_5_weight(N))
 
     # search_n_top = 100
     # # pool = DBF.pool_test1(H)
@@ -50,7 +50,7 @@ function run()
 
     H, gi, θi = adapt(H, pool, ψ, 
                     max_iter=120, conv_thresh=1e-3, 
-                    evolve_weight_thresh=6,
+                    evolve_weight_thresh=8,
                     evolve_coeff_thresh=1e-4)
     
     
