@@ -71,7 +71,7 @@ TBW
 function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N}; 
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
-            evolve_weigth_thresh=20,
+            evolve_weight_thresh=20,
             search_n_top=100,
             extra_diag=nothing) where {N,T}
     O = deepcopy(Oin)
