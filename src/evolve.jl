@@ -33,6 +33,24 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     return cos_branch 
 end
 
+function evolve!(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
+    _cos = cos(θ)
+    _sin = 1im*sin(θ)
+    sin_branch = PauliSum(N)
+    for (p,c) in O
+        if PauliOperators.commute(p,G) == false
+            O[p] *= _cos
+            # replace sum! with more efficient version
+            # sum!(sin_branch, c*_sin*G*p)
+            tmp = c*_sin*G*p
+            curr = get(sin_branch, PauliBasis(tmp), 0.0) + PauliOperators.coeff(tmp)
+            sin_branch[PauliBasis(tmp)] = curr 
+        end
+    end
+    sum!(O, sin_branch)
+    return O 
+end
+
 """
     dissipate!(O::PauliSum, lmax::Int, γ::Real)
 
