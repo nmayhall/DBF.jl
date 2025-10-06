@@ -32,6 +32,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "len(H)")
     verbose < 1 || @printf(" %12s", "total_error")
     verbose < 1 || @printf(" %12s", "variance")
+    verbose < 1 || @printf(" %12s", "Sh Entropy")
     verbose < 1 || @printf("\n")
     
     for iter in 1:max_iter
@@ -114,6 +115,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         verbose < 1 || @printf(" %12i", length(O))
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
         verbose < 1 || @printf(" %12.8f", real(var_curr))
+        verbose < 1 || @printf(" %12.8f", entropy(O))
         verbose < 1 || @printf("\n")
         
         # if norm_new - norm_old < conv_thresh
@@ -431,8 +433,15 @@ function pool_test1(O::PauliSum{N}) where N
     return [first(x) for x in sort(collect(pool), by = x -> abs(last(x)))]
 end
 
-function entropy(H)
+function entropy(O)
 
     # S = -sum_i |c_i|^2 log(|c_i|^2)
     # S(x) = 
+    s = 0
+    n = norm(O)
+    for (_,c) in O
+        p = abs2(c)/n^2
+        s -= p*log(p)
+    end
+    return s
 end

@@ -6,22 +6,23 @@ using LinearAlgebra
 using Test
 
 function run()
-    # N = 49 
-    N = 9 
+    N = 49 
+    # N = 8 
     Random.seed!(2)
     # H = DBF.heisenberg_1D(N, -1, -2, -3, z=.1)
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
-    # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
-    H = DBF.heisenberg_2D(9, 1, -0, -0, -1, x=.1)
+    H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
+    # H = DBF.heisenberg_2D(9, 1, -0, -0, -1, x=.1)
+    # H = DBF.heisenberg_1D(N, -1, -2, -3, x=.1)
     DBF.coeff_clip!(H)
 
     println(" Original H:")
     display(H)
     
-    Hmat = Matrix(H)
-    evals = eigvals(Hmat)
+    # # Hmat = Matrix(H)
+    # # evals = eigvals(Hmat)
    
-    @show minimum(evals)
+    # @show minimum(evals)
    
 
     ψ = Ket([i%2 for i in 1:N])
