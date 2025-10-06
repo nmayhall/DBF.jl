@@ -1,6 +1,9 @@
 using DBF
 using Plots
 using DifferentialEquations
+using PauliOperators
+using Random
+using LinearAlgebra
 
 """
     dissipate!(O::PauliSum, Li::PauliBasis, γ::Real, dt::Real)
@@ -14,11 +17,10 @@ function dissipate!(O::PauliSum, Li::PauliBasis, γ::Real, dt::Real)
     exp_term = exp(-2 * γ * dt)
     for (p,c) in O
         
-        # [p,Li] == 0, then we do nothing
+        # if [p,Li] == 0, then we do nothing
         !PauliOperators.commute(p,Li) || continue
 
-        # O[p] = c * ( 1 - 2 * γ * dt * exp_term)
-        O[p] -= exp_term - 1
+        O[p] = exp_term*c
     end
     return O
 end
@@ -32,13 +34,13 @@ function run()
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
     # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
     # H = DBF.heisenberg_2D(N, 1, -1, -2, -3, x=.1)
-    DBF.coeff_clip!(H,thresh=10)
+    DBF.coeff_clip!(H)
 
     H_trotter = Vector{Tuple{PauliBasis{N}, Float64}}([(k,v) for (k,v) in H])
 
     # create measurement operators
-    γ = 1
-    L = [(PauliBasis(Pauli(N, Z=[i])), γ) for i in 1:1]
+    γ = .1
+    L = [(PauliBasis(Pauli(N, Z=[i])), γ) for i in 1:N]
     println(" Original H:")
     # display(H)
     display("H_trotter:")
@@ -51,9 +53,9 @@ function run()
     O0 = PauliSum(Pauli(N, Z=[1], X=[2]))
     O0 = rand(PauliSum{N}, n_paulis=200); O0 += O0'
     O0 = O0 * (1/norm(O0))
-    coeff_clip!(O0)
+    DBF.coeff_clip!(O0)
     Ot = deepcopy(O0) 
-    n_steps = 1
+    n_steps = 100
     dt = .01
     
 
@@ -148,6 +150,76 @@ function run()
     # end
 end
 
+function run2()
+
+    N = 2 
+    Random.seed!(2)
+    H = DBF.heisenberg_1D(N, -1, -2, -3, z=.1)
+    # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
+    # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
+    # H = DBF.heisenberg_2D(N, 1, -1, -2, -3, x=.1)
+    DBF.coeff_clip!(H)
+
+    H_trotter = Vector{Tuple{PauliBasis{N}, Float64}}([(k,v) for (k,v) in H])
+
+    # create measurement operators
+    γ = 1
+    L = [(PauliBasis(Pauli(N, X=[i])), γ) for i in 1:N]
+    # L = vcat(L, [(PauliBasis(Pauli(N, X=[i])), γ) for i in 1:N])
+    # L = vcat(L, [(PauliBasis(Pauli(N, Y=[i])), γ) for i in 1:N])
+    println(" Original H:")
+    # display(H)
+    display("H_trotter:")
+    [@printf(" %s %12.8f\n", string(li[1]), li[2]) for li in H_trotter]
+    display("L_trotter:")
+    [@printf(" %s %12.8f\n", string(li[1]), li[2]) for li in L]
+    # evals = eigvals(Hmat)
+
+    # Initial operator:
+    O0 = PauliSum(Pauli(N, Z=[1]))
+    DBF.coeff_clip!(O0)
+    Ot = deepcopy(O0) 
+    n_steps = 1000
+    dt = .001
+    coeff_thresh = 1e-8
+    
+
+    tplot = [i*dt for i in 0:n_steps]
+    p_plot = zeros(n_steps+1)
+    p_plot[1] = inner_product(O0,Ot)
+    
+    for step_i in 1:n_steps
+
+        # evolve by H
+        for (ok, hk) in H_trotter
+            # O(t+dt) = exp(i hi ok dt) O(t) exp(i hi ok dt)
+            # θ = 2 * hi * dt 
+            DBF.evolve!(Ot, ok, 2*hk*dt)
+        end
+        DBF.coeff_clip!(Ot, thresh=coeff_thresh)
+        # Dissipate
+        for (Lk, γk) in L 
+            dissipate!(Ot, Lk, γk, dt)
+        end
+        DBF.coeff_clip!(Ot, thresh=coeff_thresh)
+    
+        p_plot[step_i+1] = real(inner_product(O0,Ot))
+        @printf(" %12.8f", step_i*dt)
+        @printf(" %12.8f", p_plot[step_i+1])
+        @printf(" %12i", length(Ot))
+        @printf(" %12.8f", DBF.entropy(Ot))
+        @printf("\n") 
+    end
+    
+
+    # Plot results (requires Plots.jl)
+    plt = plot(tplot, p_plot, label="Pauli inner product", xlabel="t", ylabel="value", legend=:topright)
+    ylims!(-1,1)
+    savefig(plt, "cont_measure_plot.pdf")
+
+    display(Matrix(Ot))
+    display(Ot[PauliBasis{N}(0,0)])
+end
 
 
-run()
+run2()
