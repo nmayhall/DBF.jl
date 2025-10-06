@@ -16,7 +16,7 @@ function run()
     DBF.coeff_clip!(H)
 
     println(" Original H:")
-    # display(H)
+    display(H)
     
     Hmat = Matrix(H)
     evals = eigvals(Hmat)

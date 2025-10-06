@@ -80,3 +80,156 @@ function heisenberg_2D(Nx, Ny, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
     
     return H
 end
+
+# - - - - - - - - - - - - -
+# Fermionic Hamiltonians
+# - - - - - - - - - - - - -
+"""
+   HELPERS
+ The following functions are designed to perform the Jordan-Wigner mapping.
+"""
+function JWmapping(N; i::Int, j::Int)
+    # Compute C^dagger_i term
+    ax_term = Pauli(2^(i-1)-1, 2^(i-1), N)
+    ay_term = Pauli(2^(i)-1, 2^(i-1), N)
+    c_dagg_a = 0.5 * (ax_term - ay_term)
+
+    # Compute C_j term
+    bx_term = Pauli(2^(j-1)-1, 2^(j-1), N)
+    by_term = Pauli(2^(j)-1, 2^(j-1), N)
+    c_b = 0.5 * (bx_term + by_term)
+
+    # Build C^dagger_i*C_j
+    term =  c_dagg_a * c_b
+
+    return term
+end
+
+"""
+ 1D Fermi-Hubbard model 
+Generate a 1D Fermi-Hubbard Hamiltonian (open boundaries, no PBC)
+using JW mapping into Pauli operators.
+
+Arguments:
+- o::Pauli{N} : reference Pauli object
+- L::Int       : number of sites
+- t::Float64   : hopping amplitude
+- U::Float64   : on-site interaction
+- k::Int       : number of Trotter steps (can be used later for evolution)
+
+Returns:
+- generators::Vector{Pauli{N}}
+- parameters::Vector{Float64}
+"""
+
+function hubbard_model_1D(L::Int64, t::Float64, U::Float64)
+    
+    N_total = 2 * L   # Total number of fermionic modes (spin up and down)
+    H = PauliSum(N_total, Float64)
+
+    # Hopping terms
+    for i in 1:L-1
+        # spin-up
+        a_up = 2*i - 1
+        b_up = 2*(i+1) - 1
+        hopping_up = JWmapping(N_total, i=a_up, j=b_up) + JWmapping(N_total, i=b_up, j=a_up)
+
+        # spin-down
+        a_dn = 2*i
+        b_dn = 2*(i+1)
+        hopping_dn = JWmapping(N_total, i=a_dn, j=b_dn) + JWmapping(N_total, i=b_dn, j=a_dn)
+        
+        # Add both
+        H += -t * (hopping_up + hopping_dn)
+    end
+
+    # On-site interaction terms``
+    for i in 1:L
+        a_up = 2*i - 1   # spin-up orbital index
+        a_dn = 2*i       # spin-down orbital index
+        interaction_term = U *JWmapping(N_total, i=a_up, j=a_up) * JWmapping(N_total, i=a_dn, j=a_dn)
+
+        H += interaction_term
+    end
+
+    #Filter zero coefficients
+    DBF.coeff_clip!(H)
+
+    return H    
+end
+
+
+"""
+    fermi_hubbard_2D(Lx, Ly, t, U; reverse_ordering=false)
+
+Construct generators and parameters for the 2D spinful Hubbard model on Lx×Ly
+(physical sites). Each physical site has two spin-orbitals (up, down), so
+total qubits N must equal 2 * Lx * Ly.
+
+Returns (generators::Vector{Pauli{N}}, parameters::Vector{Float64}).
+"""
+function fermi_hubbard_2D(Lx::Int, Ly::Int, t::Float64, U::Float64)
+    Nsites = Lx * Ly
+    N_total = 2 * Nsites   # Total number of fermionic modes (spin up and down)
+    H = PauliSum(N_total, Float64)
+
+    if 2 * Nsites != N_total
+        throw(ArgumentError("Total qubits N must equal 2 * Lx * Ly. Got N=$N_total, Lx*Ly=$Nsites"))
+    end
+
+    up(j) = 2*j - 1
+    dn(j) = 2*j
+    linear_index(x,y) = (x - 1) * Ly + y   # x in 1:Lx, y in 1:Ly
+
+    # small tolerance for dropping tiny coeffs
+    eps_coeff = 1e-12
+
+    # HOPPING: loop nearest-neighbour pairs once, add c_i^† c_j + c_j^† c_i (both spins)
+    for x in 1:Lx, y in 1:Ly
+        jsite = linear_index(x, y)
+         # neighbor +x (right in x)
+        if x < Lx
+            isite = linear_index(x + 1, y)
+            for spin in (up, dn)
+                m = spin(jsite)   # mode index for j
+                n = spin(isite)   # mode index for i
+                term = JWmapping(N_total, i=m, j=n) + JWmapping(N_total, i=n, j=m)
+                H += -t * term
+            end
+        end
+         # neighbor +y (right in y)
+         if y < Ly
+            isite = linear_index(x, y + 1)
+            for spin in (up, dn)
+                m = spin(jsite)
+                n = spin(isite)
+                term = JWmapping(N_total, i=m, j=n) + JWmapping(N_total, i=n, j=m)
+                H += -t * term
+            end
+        end
+    end
+
+    for i in 1:Nsites
+        a_up = 2*i - 1   # spin-up orbital index
+        a_dn = 2*i       # spin-down orbital index
+        interaction_term = U *JWmapping(N_total, i=a_up, j=a_up) * JWmapping(N_total, i=a_dn, j=a_dn)
+
+        H += interaction_term
+    end
+
+    # Filter zero coefficients
+    DBF.coeff_clip!(H, thresh=eps_coeff)
+
+    return H
+end
+
+
+# Test Hubbard 1D
+H = hubbard_model_1D(2, 5.0, 2.0)
+display(H)
+println("Number of terms in Hubbard 1D Hamiltonian: ", length(H))
+
+# Test Hubbard 2D
+H = fermi_hubbard_2D(1, 2, 5.0, 2.0)
+display(H)
+println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
