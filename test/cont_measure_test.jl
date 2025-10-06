@@ -17,7 +17,8 @@ function dissipate!(O::PauliSum, Li::PauliBasis, γ::Real, dt::Real)
         # [p,Li] == 0, then we do nothing
         !PauliOperators.commute(p,Li) || continue
 
-        O[p] = c * ( 1 - 2 * γ * dt * exp_term)
+        # O[p] = c * ( 1 - 2 * γ * dt * exp_term)
+        O[p] -= exp_term - 1
     end
     return O
 end
@@ -31,13 +32,13 @@ function run()
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
     # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
     # H = DBF.heisenberg_2D(N, 1, -1, -2, -3, x=.1)
-    DBF.coeff_clip!(H)
+    DBF.coeff_clip!(H,thresh=10)
 
     H_trotter = Vector{Tuple{PauliBasis{N}, Float64}}([(k,v) for (k,v) in H])
 
     # create measurement operators
-    γ = .1
-    L = [(PauliBasis(Pauli(N, Z=[i])), γ) for i in 1:N]
+    γ = 1
+    L = [(PauliBasis(Pauli(N, Z=[i])), γ) for i in 1:1]
     println(" Original H:")
     # display(H)
     display("H_trotter:")
@@ -48,8 +49,11 @@ function run()
 
     # Initial operator:
     O0 = PauliSum(Pauli(N, Z=[1], X=[2]))
+    O0 = rand(PauliSum{N}, n_paulis=200); O0 += O0'
+    O0 = O0 * (1/norm(O0))
+    coeff_clip!(O0)
     Ot = deepcopy(O0) 
-    n_steps = 100
+    n_steps = 1
     dt = .01
     
 
@@ -64,11 +68,11 @@ function run()
     p_plot = zeros(n_steps+1)
     m_plot = zeros(n_steps+1)
 
-    @printf(" %12s %12s %12s\n", "t", "Pauli", "Matrix")
-    @printf(" %12.8f %12.8f %12.8f\n", 0, inner_product(O0,Ot), real(tr(O0mat*Omat))/2^N)
+    # @printf(" %12s %12s %12s\n", "t", "Pauli", "Matrix")
+    # @printf(" %12.8f %12.8f %12.8f\n", 0, inner_product(O0,Ot), real(tr(O0mat*Omat))/2^N)
     
     p_plot[1] = inner_product(O0,Ot)
-    m_plot[1] = real(tr(O0mat*Omat))/2^N
+    # m_plot[1] = real(tr(O0mat*Omat))/2^N
     
     for step_i in 1:n_steps
 
@@ -83,20 +87,20 @@ function run()
             dissipate!(Ot, Lk, γk, dt)
         end
     
-        # Exact:
-        Omat += dt * 1im*(Hmat*Omat - Omat*Hmat)
-        # Omat = Umat'*Omat*Umat
-        # Dissipate
-        for (Lk, γk) in Lmat 
-            Omat += dt * γk * (Lk' * Omat * Lk - 1/2 * Lk'*Lk*Omat - 1/2 * Omat*Lk'*Lk) 
-        end
+        # # Exact:
+        # Omat += dt * 1im*(Hmat*Omat - Omat*Hmat)
+        # # Omat = Umat'*Omat*Umat
+        # # Dissipate
+        # for (Lk, γk) in Lmat 
+        #     Omat += dt * γk * (Lk' * Omat * Lk - 1/2 * Lk'*Lk*Omat - 1/2 * Omat*Lk'*Lk) 
+        # end
         
-        @printf(" %12.8f %12.8f %12.8f\n", step_i*dt, inner_product(O0,Ot), real(tr(O0mat*Omat))/2^N)
-        Omat = Omat / norm(Omat)
+        # @printf(" %12.8f %12.8f %12.8f\n", step_i*dt, inner_product(O0,Ot), real(tr(O0mat*Omat))/2^N)
+        # Omat = Omat / norm(Omat)
 
         # store at step_i+1 because tplot[1] corresponds to time 0
-        p_plot[step_i+1] = inner_product(O0,Ot)
-        m_plot[step_i+1] = real(tr(O0mat*Omat))/2^N
+        p_plot[step_i+1] = real(inner_product(O0,Ot))
+        # m_plot[step_i+1] = real(tr(O0mat*Omat))/2^N
         
     end
 
@@ -113,7 +117,7 @@ function run()
 
     # prob = ODEProblem(rhs, O0mat, 0:dt:n_steps*dt)
     prob = ODEProblem(rhs, O0mat, (0,n_steps*dt))
-    sol = solve(prob, saveat=dt)
+    sol = solve(prob, saveat=dt, reltol=1e-12, abstol=1e-14)
     exact = [real(tr(oi*O0mat))/2^N for oi in sol.u]
     # plot(sol)
     
