@@ -26,8 +26,10 @@ using Test
     
     @show DBF.variance(H,ψ)
 
-    H, gi, θi = dbf_groundstate(H, ψ, max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-4,
+    H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=2,
+                    max_iter=20, conv_thresh=1e-3, 
+                    evolve_coeff_thresh=1e-6,
+                    evolve_grad_thresh=1e-10,
                     search_n_top=100)
    
     e3 = real(expectation_value(H,ψ))

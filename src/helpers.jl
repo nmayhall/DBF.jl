@@ -1,3 +1,44 @@
+"""
+ Compute the Majorana weight of a Pauli string.
+"""
+function majorana_weight(Pb::Union{PauliBasis{N}, Pauli{N}}) where N
+    w = 0
+    control = true
+    # tmp = Pb.z & ~Pb.x  # Bitwise AND with bitwise NOT
+    Ibits = ~(Pb.z|Pb.x)
+    Zbits = Pb.z & ~Pb.x
+
+    for i in reverse(1:N)  # Iterate from N down to 1
+        xbit = (Pb.x >> (i - 1)) & 1 != 0
+        Zbit = (Zbits >> (i - 1)) & 1 != 0
+        Ibit = (Ibits >> (i - 1)) & 1 != 0
+        #println("i=$i, xbit=$xbit, Zbit=$Zbit, Ibit=$Ibit, control=$control, w=$w")
+        if Zbit && control || Ibit && !control
+            w += 2
+        elseif xbit
+            control = !control
+            w += 1
+        end
+    end
+    return w
+end
+
+"""
+ Compute the Pauli weight of a Pauli string.
+"""
+function pauli_weight(Pb::Union{PauliBasis{N}, Pauli{N}}) where N
+    w = 0
+    for i in 1:N
+        xbit = (Pb.x >> (i - 1)) & 1
+        zbit = (Pb.z >> (i - 1)) & 1
+
+        if xbit != 0 || zbit != 0
+            w += 1
+        end
+    end
+    return w
+end
+
 function inner_product(O1::PauliSum{N,T}, O2::PauliSum{N,T}) where {N,T}
     out = T(0)
     if length(O1) < length(O2)
@@ -56,6 +97,10 @@ end
 
 function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
     filter!(p->weight(p.first) <= max_weight, ps)
+end
+
+function majorana_weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
+    filter!(p->majorana_weight(p.first) <= max_weight, ps)
 end
 
 function reduce_by_1body(p::PauliBasis{N}, ψ) where N
