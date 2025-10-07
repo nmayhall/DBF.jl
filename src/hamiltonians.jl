@@ -232,12 +232,81 @@ function fermi_hubbard_2D(Lx::Int, Ly::Int, t::Float64, U::Float64)
 end
 
 
-# Test Hubbard 1D
-H = hubbard_model_1D(2, 5.0, 2.0)
-display(H)
-println("Number of terms in Hubbard 1D Hamiltonian: ", length(H))
+"""
+ - - - Fermi-Hubbard model 2D (snake/zizag ordering) - - -
+ The following function constructs the Hamiltonian for the 2D Fermi-Hubbard model
+    using a snake-like (zigzag) ordering of the lattice sites.
+  Constucts the model on a Lx x Ly lattive of physical sites,
+  each site has two spin-orbitals (up, down), so the total number of fermionic modes is 
+  N_total = 2 * Lx * Ly.
+  If 'snake_ordering' is true, the physical sites follow a row-wise "snake/zigzag" pattern.
+  Returns a PauliSum representing the Hamiltonian.
+"""
+function fermi_hubbard_2D_snake(Lx::Int, Ly::Int, t::Float64, U::Float64; snake_ordering::Bool=false)
+    Nsites  = Lx * Ly
+    N_total = 2 * Nsites
+    H = PauliSum(N_total, Float64)
 
-# Test Hubbard 2D
-H = fermi_hubbard_2D(1, 2, 5.0, 2.0)
-display(H)
-println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
+    # Spin-orbital indices for site j (1-based site indexing)
+    up(j) = 2*j - 1
+    dn(j) = 2*j
+
+    # Map (row x, col y) -> site index j in [1, Nsites]
+    @inline function site_index(x::Int, y::Int)
+        if !snake_ordering
+            # Row-major
+            return (x - 1) * Ly + y
+        else
+            # Snake (zigzag) row-major:
+            # odd rows (x=1,3,...) go left->right
+            # even rows (x=2,4,...) go right->left
+            if isodd(x)
+                return (x - 1) * Ly + y
+            else
+                return x * Ly - (y - 1)
+            end
+        end
+    end
+
+    # small tolerance for dropping tiny coeffs
+    eps_coeff = 1e-12
+
+    # HOPPING: nearest-neighbor pairs (right and down) — add h.c.; both spins
+    for x in 1:Lx, y in 1:Ly
+        jsite = site_index(x, y)
+
+        # neighbor in +x (next row)
+        if x < Lx
+            isite = site_index(x + 1, y)
+            for spin in (up, dn)
+                m = spin(jsite)
+                n = spin(isite)
+                term = JWmapping(N_total, i=m, j=n) + JWmapping(N_total, i=n, j=m)
+                H += -t * term
+            end
+        end
+
+        # neighbor in +y (next column)
+        if y < Ly
+            isite = site_index(x, y + 1)
+            for spin in (up, dn)
+                m = spin(jsite)
+                n = spin(isite)
+                term = JWmapping(N_total, i=m, j=n) + JWmapping(N_total, i=n, j=m)
+                H += -t * term
+            end
+        end
+    end
+
+    # On-site interaction U * n_up * n_dn
+    for i in 1:Nsites
+        a_up = 2*i - 1
+        a_dn = 2*i
+        interaction_term = U * JWmapping(N_total, i=a_up, j=a_up) *
+                               JWmapping(N_total, i=a_dn, j=a_dn)
+        H += interaction_term
+    end
+
+    DBF.coeff_clip!(H, thresh=eps_coeff)
+    return H
+end
