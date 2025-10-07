@@ -185,7 +185,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
             evolve_weight_thresh=20,
-            evolve_grad_thresh=1e-8,
+            grad_coeff_thresh=1e-8,
+            grad_weight_thresh=10,
             search_n_top=1000,
             extra_diag=nothing) where {N,T}
     O = deepcopy(Oin)
@@ -225,12 +226,14 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     end
     # S = S * (1/length(S))
     
-    verbose < 1 || @printf(" %6s %12s %12s", "Iter", "|H|", "<ψ|H|ψ>")
+    verbose < 1 || @printf(" %6s", "Iter")
+    verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
     verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
+    verbose < 1 || @printf(" %12s", "total_error")
+    verbose < 1 || @printf(" %12s", "|H|")
     verbose < 1 || @printf(" %8s", "#PoolOps")
     verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "len(H)")
-    verbose < 1 || @printf(" %12s", "total_error")
     verbose < 1 || @printf(" %12s", "variance")
     verbose < 1 || @printf(" %12s", "Sh Entropy")
     verbose < 1 || @printf("\n")
@@ -240,10 +243,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
        
         # Create the iteration dependent pool
-        # pool = max_of_commutator2(S, O, n_top=search_n_top)
-        pool = S*O - O*S
-        coeff_clip!(pool, thresh=evolve_coeff_thresh)
-        weight_clip!(pool, evolve_weight_thresh)
+        pool = max_of_commutator2(S, O, n_top=search_n_top)
+        # pool = S*O - O*S
+        coeff_clip!(pool, thresh=grad_coeff_thresh)
+        # weight_clip!(pool, grad_weight_thresh)
         pool = find_top_k(pool, search_n_top)
 
         if length(pool) == 0
@@ -262,7 +265,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             ci, σ = p*ψ
             gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
             # @show expectation_value(O*p*c - c*p*O, ψ)
-            if abs(gi) > evolve_grad_thresh
+            if abs(gi) > grad_coeff_thresh
                 push!(grad_vec, gi)
                 push!(grad_ops, p)
             end
@@ -290,15 +293,15 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
            
             #
             # make sure energy lowering is large enough to warrent evolving
-            costi(0) - costi(θi) > evolve_grad_thresh || continue
+            # costi(0) - costi(θi) > evolve_coeff_thresh || continue
 
             n_rots < search_n_top || break 
             
             #See if we can do a cheap clifford operation
-            if costi(0) - costi(π/2) > evolve_grad_thresh
-                θi = π/2
-                @warn "clifford", costi(0) - costi(π/2)
-            end 
+            # if costi(0) - costi(π/2) > evolve_coeff_thresh 
+            #     θi = π/2
+            #     @warn "clifford", costi(0) - costi(π/2)
+            # end 
           
             
 
@@ -328,11 +331,14 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
         
         var_curr = variance(O,ψ)
-        verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
+        verbose < 1 || @printf("*%6i", iter)
+        verbose < 1 || @printf(" %12.8f", ecurr)
+        verbose < 1 || @printf(" %12.8f", norm_new)
+        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", norm(O))
         verbose < 1 || @printf(" %8i", length(pool))
         verbose < 1 || @printf(" %4i", n_rots)
         verbose < 1 || @printf(" %8i", length(O))
-        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
         verbose < 1 || @printf(" %12.8f", real(var_curr))
         verbose < 1 || @printf(" %12.8f", entropy(O))
         verbose < 1 || @printf("\n")
@@ -349,7 +355,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
         if n_rots == 0
             @warn """ No search directions found. 
-                    Tighten `evolve_grad_thresh` or expand pool"""
+                    Tighten `grad_coeff_thresh` or expand pool"""
             break
         end
         

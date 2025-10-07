@@ -83,6 +83,14 @@ function LinearAlgebra.norm(p::PauliSum{N,T}) where {N,T}
     return sqrt(real(out))
 end
 
+function LinearAlgebra.norm(p::KetSum{N,T}) where {N,T}
+    out = T(0)
+    for (p,c) in p 
+        out += abs2(c) 
+    end
+    return sqrt(real(out))
+end
+
 function weight(p::PauliBasis) 
     return count_ones(p.x | p.z)
 end
