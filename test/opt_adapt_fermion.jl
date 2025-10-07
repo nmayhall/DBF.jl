@@ -30,10 +30,10 @@ function run()
    
 
     #ψ = Ket([i%2 for i in 1:N])
-    #kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
-    #ψ = Ket{N}(kidx)
+    kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
+    ψ = Ket{N}(kidx)
     
-    ψ = Ket{N}(3)    # half filled state
+    #ψ = Ket{N}(3)    # half filled state
     display(ψ)
     e0 = expectation_value(H,ψ)
    

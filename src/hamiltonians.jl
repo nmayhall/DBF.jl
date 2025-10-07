@@ -94,7 +94,7 @@ end
 @inline umask_le(i::Int) = umask_lt(i) | ubit(i)                      # bits ≤ i
 
 # --- JW mapping (original real ± form; your coeff() supplies +i on ZX sites) ---
-function JWmapping(o::Pauli{N}; i::Int, j::Int) where N
+function JWmapping(N; i::Int, j::Int)
     1 <= i <= N || throw(DimensionMismatch("site i=$i out of 1:$N"))
     1 <= j <= N || throw(DimensionMismatch("site j=$j out of 1:$N"))
 
