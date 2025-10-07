@@ -88,21 +88,29 @@ end
    HELPERS
  The following functions are designed to perform the Jordan-Wigner mapping.
 """
-function JWmapping(N; i::Int, j::Int)
-    # Compute C^dagger_i term
-    ax_term = Pauli(2^(i-1)-1, 2^(i-1), N)
-    ay_term = Pauli(2^(i)-1, 2^(i-1), N)
-    c_dagg_a = 0.5 * (ax_term - ay_term)
+# --- helpers for JWmapping ---
+@inline ubit(i::Int) = UInt128(1) << (i-1)                         # bit at site i (1-based)
+@inline umask_lt(i::Int) = i==1 ? UInt128(0) : (ubit(i) - UInt128(1))  # bits < i
+@inline umask_le(i::Int) = umask_lt(i) | ubit(i)                      # bits ≤ i
 
-    # Compute C_j term
-    bx_term = Pauli(2^(j-1)-1, 2^(j-1), N)
-    by_term = Pauli(2^(j)-1, 2^(j-1), N)
-    c_b = 0.5 * (bx_term + by_term)
+# --- JW mapping (original real ± form; your coeff() supplies +i on ZX sites) ---
+function JWmapping(o::Pauli{N}; i::Int, j::Int) where N
+    1 <= i <= N || throw(DimensionMismatch("site i=$i out of 1:$N"))
+    1 <= j <= N || throw(DimensionMismatch("site j=$j out of 1:$N"))
 
-    # Build C^dagger_i*C_j
-    term =  c_dagg_a * c_b
+    # X pieces with Z-strings
+    ax = Pauli{N}(1, reinterpret(Int128, umask_lt(i)), reinterpret(Int128, ubit(i)))  # Z^{<i} X_i
+    bx = Pauli{N}(1, reinterpret(Int128, umask_lt(j)), reinterpret(Int128, ubit(j)))  # Z^{<j} X_j
 
-    return term
+    # "Y" pieces = Z^{≤i} X_i, Z^{≤j} X_j  (no explicit im; your coeff() turns ZX into iY)
+    ay = Pauli{N}(1, reinterpret(Int128, umask_le(i)), reinterpret(Int128, ubit(i)))
+    by = Pauli{N}(1, reinterpret(Int128, umask_le(j)), reinterpret(Int128, ubit(j)))
+
+    # c†_i = (X_i - Y_i)/2,  c_j = (X_j + Y_j)/2   in your convention
+    c_dagg_i = 0.5 * (ax - ay)
+    c_j      = 0.5 * (bx + by)
+
+    return c_dagg_i * c_j
 end
 
 """

@@ -8,17 +8,17 @@ using Test
 """
  Here we provide a test example for application of the Adapt-DBF to a fermionic system, specifically the Hubbard model.
 """
-
+ 
 function run()
     # Parameters for Hubbard model
-    Lx = 2
-    Ly = 2
+    Lx = 1
+    Ly = 4
     Nsites = Lx * Ly
     N = 2 * Nsites   # 2 spin states per site
-    t = 5.0
+    t = 1.0
     U = 2.0
-    H = DBF.fermi_hubbard_2D(Lx, Ly, t, U)
-    #H = DBF.hubbard_model_1D(Nsites, t, U)
+    #H = DBF.fermi_hubbard_2D(Lx, Ly, t, U)
+    H = DBF.hubbard_model_1D(Nsites, t, U)
 
     println(" Original H:")
     display(H)
