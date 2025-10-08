@@ -238,17 +238,17 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "Sh Entropy")
     verbose < 1 || @printf("\n")
 
-
     for iter in 1:max_iter
         
        
         # Create the iteration dependent pool
         pool = max_of_commutator2(S, O, n_top=search_n_top)
         # pool = S*O - O*S
+        # pool = commute_with_Zs(O)
         coeff_clip!(pool, thresh=grad_coeff_thresh)
         # weight_clip!(pool, grad_weight_thresh)
         pool = find_top_k(pool, search_n_top)
-
+       
         if length(pool) == 0
             @warn " No search direction found. Increase `n_top` or decrease `clip`"
             break
@@ -260,7 +260,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         # @show norm(pool), norm(pool*O - O*pool)
         # Compute gradient vector
         for (p,c) in pool
-            dyad = (ψ * ψ') * p'
+            # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             ci, σ = p*ψ
             gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
@@ -283,7 +283,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         sorted_idx = reverse(sortperm(abs.(grad_vec)))
 
         verbose < 2 || @printf("     %8s %12s %12s", "pool idx", "||O||", "<ψ|H|ψ>")
-        verbose < 2 || @printf(" %12s %12s %s", "len(O)", "θi", string(G))
+        verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
         for gi in sorted_idx
@@ -294,6 +294,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             #
             # make sure energy lowering is large enough to warrent evolving
             # costi(0) - costi(θi) > evolve_coeff_thresh || continue
+            costi(0) - costi(θi) > grad_coeff_thresh || continue
 
             n_rots < search_n_top || break 
             
@@ -362,4 +363,26 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         norm_old = norm_new
     end
     return O, generators, angles
+end
+
+function commute_with_Zs(O::PauliSum{N}) where N
+    out_tot = PauliSum(N)
+   
+    for i in 1:N
+        zi = PauliBasis(Pauli(N, Z=[i]))
+        
+        out = PauliSum(N)
+        sizehint!(out, min(1000, length(O)//2)) # assume half commute
+
+        for (p, c) in O
+            
+            !PauliOperators.commute(zi,p) || continue
+            # out += c*(zi*p - p*zi) 
+            zp = zi*p 
+            curr = get(out, PauliBasis(zp), 0.0) 
+            out[PauliBasis(zp)] = curr + 2*coeff(zp)*c
+        end
+        sum!(out_tot, out)
+    end
+    return out_tot
 end

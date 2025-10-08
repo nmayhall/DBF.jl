@@ -21,13 +21,13 @@ end
 
 
 function run()
-    N = 10 
+    N = 8 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, -1, -2, -3, x=.1)
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
     # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
     DBF.coeff_clip!(H)
-
+    H0 = deepcopy(H)
     println(" Original H:")
     # display(H)
     
@@ -46,19 +46,48 @@ function run()
 
     @show norm(H)
     
-    H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=1, 
+    @time H, g, θ = DBF.dbf_groundstate(H, ψ, n_body=1, 
+                                verbose=1, 
+                                max_iter=120, conv_thresh=1e-3, 
+                                evolve_coeff_thresh=1e-4,
+                                evolve_weight_thresh=8,
+                                grad_coeff_thresh=1e-3,
+                                # grad_weight_thresh=2,
+                                search_n_top=100)
+    @show DBF.get_weight_counts(H)
+    @show DBF.get_weight_probs(H)
+    
+    @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, n_body=1,
+                                verbose=1, 
                                 max_iter=120, conv_thresh=1e-3, 
                                 evolve_coeff_thresh=1e-3,
-                                evolve_weight_thresh=5,
-                                grad_coeff_thresh=1e-3,
-                                # grad_weight_thresh=4,
-                                search_n_top=2000)
-    # H, gi, θi = DBF.dbf_groundstate_old(H, ψ, 
+                                evolve_weight_thresh=8,
+                                grad_coeff_thresh=1e-5,
+                                search_n_top=1000)
+    g = vcat(g,g2)
+    θ = vcat(θ,θ2)
+    @show DBF.get_weight_counts(H)
+    @show DBF.get_weight_probs(H)
+    @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, n_body=1,
+                                verbose=1, 
+                                max_iter=120, conv_thresh=1e-3, 
+                                evolve_coeff_thresh=1e-3,
+                                evolve_weight_thresh=8,
+                                grad_coeff_thresh=1e-5,
+                                search_n_top=10000)
+    g = vcat(g,g2)
+    θ = vcat(θ,θ2)
+    @show DBF.get_weight_counts(H)
+    @show DBF.get_weight_probs(H)
+    # @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, n_body=3, 
     #                             max_iter=120, conv_thresh=1e-3, 
-    #                             evolve_coeff_thresh=1e-4,
-    #                             evolve_weight_thresh=3,
+    #                             evolve_coeff_thresh=1e-3,
+    #                             evolve_weight_thresh=10,
+    #                             grad_coeff_thresh=1e-7,
+    #                             grad_weight_thresh=10,
     #                             search_n_top=100)
-    
+    # g = vcat(g,g2)
+    # θ = vcat(θ,θ2)
     println(" New H:")
     display(norm(H))
     display(norm(diag(H)))
@@ -66,6 +95,27 @@ function run()
     e1 = expectation_value(H,ψ)
     @printf(" E1 = %12.8f\n", e1)
 
+    println(" Now rerun with higher accuracy:")
+    @show length(θ)
+    Ht = deepcopy(H0)
+    ecurr = expectation_value(Ht,ψ)
+    @printf(" %12.8f\n", ecurr)
+    @time for (gi,θi) in zip(g,θ)
+        Ht = DBF.evolve(Ht, gi, θi)
+
+        DBF.coeff_clip!(Ht, thresh=1e-6)
+        DBF.weight_clip!(Ht, 8)
+        ecurr = expectation_value(Ht,ψ)
+        # @printf(" %s", gi)
+        # @printf(" %12.8f", θi)
+        # @printf(" %12.8f", ecurr)
+        # @printf("\n")
+    end    
+    ecurr = expectation_value(Ht,ψ)
+    @printf(" %12.8f %8i\n", ecurr, length(Ht))
+    @show ecurr 
+    @show norm(Ht), norm(H0)
+    
 end
 
 

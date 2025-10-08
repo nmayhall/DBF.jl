@@ -11,7 +11,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
             evolve_weight_thresh=20,
-            evolve_grad_thresh=1e-8,
+            grad_coeff_thresh=1e-8,
             extra_diag=nothing) where {N,T}
     O = deepcopy(Oin)
     generators = Vector{PauliBasis}([])
@@ -43,7 +43,11 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             c, σ = p*ψ
-            grad_vec[pi] = 2*imag(matrix_element(σ', O, ψ)*c)
+            # grad_vec[pi] = 2*imag(matrix_element(σ', O, ψ)*c)
+            g  = matrix_element(σ', O, ψ)*c
+            g -= matrix_element(ψ', O, σ)*c'
+            # @show g
+            grad_vec[pi] = imag(g) 
         end
         
         Gidx = argmax(abs.(grad_vec))
@@ -75,14 +79,14 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
 
             #
             # make sure gradient is non-negligible
-            abs(grad_vec[gi]) > evolve_grad_thresh || continue
+            abs(grad_vec[gi]) > grad_coeff_thresh || continue
 
             G = pool[gi]
             θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
            
             #
             # make sure energy lowering is large enough to warrent evolving
-            abs(costi(0) - costi(θi)) > evolve_grad_thresh || continue
+            abs(costi(0) - costi(θi)) > grad_coeff_thresh || continue
            
 
             O = evolve(O,G,θi)
@@ -161,6 +165,24 @@ function variance(O::PauliSum{N}, ψ::Ket{N}) where N
     e1 = expectation_value(O,ψ)
 
     return e2 - e1^2
+end
+
+function generate_commutator_pool(O::PauliSum{N}) where N
+    S = PauliSum(N)
+    for i in 1:N
+        S += PauliBasis(Pauli(N,Z=[i]))
+        for j in i+1:N
+            S += PauliBasis(Pauli(N,Z=[i,j]))
+        end
+    end
+    gen = O*S-S*O
+    coeff_clip!(gen)
+
+    pool = Vector{PauliBasis{N}}([])
+    for (p,c) in gen 
+        push!(pool,p)
+    end
+    return pool
 end
 
 

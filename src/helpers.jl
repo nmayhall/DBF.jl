@@ -251,3 +251,20 @@ function find_top_k_offdiag(dict, k=10)
 end
 
 
+
+function get_weight_counts(O::PauliSum{N}) where N
+    counts = zeros(Int, N)
+    for (p,c) in O
+        counts[weight(p)] += 1
+    end
+    return counts
+end
+
+
+function get_weight_probs(O::PauliSum{N}) where N
+    probs = zeros(N)
+    for (p,c) in O
+        probs[weight(p)] += abs2(c) 
+    end
+    return probs 
+end
