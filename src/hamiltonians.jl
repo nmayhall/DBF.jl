@@ -81,6 +81,73 @@ function heisenberg_2D(Nx, Ny, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
     return H
 end
 
+"""
+ - - - Heisenberg model 2D (snake/zizag ordering) - - -
+"""
+function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Float64; x=0, y=0, z=0, snake_ordering::Bool=false)
+    Nsites  = Lx * Ly
+    N_total = Nsites
+    H = PauliSum(N_total, Float64)
+
+    # Spin indices for site j (1-based site indexing)
+    up(j) = j
+    dn(j) = j + Nsites
+
+    # Map (row x, col y) -> site index j in [1, Nsites]
+    @inline function site_index(x::Int, y::Int)
+        if !snake_ordering
+            # Row-major
+            return (x - 1) * Ly + y
+        else
+            # Snake (zigzag) row-major:
+            # odd rows (x=1,3,...) go left->right
+            # even rows (x=2,4,...) go right->left
+            if isodd(x)
+                return (x - 1) * Ly + y
+            else
+                return x * Ly - (y - 1)
+            end
+        end
+    end
+
+# Nearest-neighbor interactions
+    for j in 0:Ly-1  # Row index
+        for i in 0:Lx-1  # Column index
+            current_site = site_index(i, j)
+            
+            # Right neighbor (i+1, j)
+            if i < Lx - 1 || periodic
+                right_i = periodic ? (i + 1) % Lx : i + 1
+                right_site = site_index(right_i, j)
+                
+                H += -2*Jx * Pauli(N_total, X=[current_site, right_site])
+                H += -2*Jy * Pauli(N_total, Y=[current_site, right_site])
+                H += -2*Jz * Pauli(N_total, Z=[current_site, right_site])
+            end
+            
+            # Up neighbor (i, j+1)  
+            if j < Ly - 1 || periodic
+                up_j = periodic ? (j + 1) % Ly : j + 1
+                up_site = site_index(i, up_j)
+                
+                H += -2*Jx * Pauli(N_total, X=[current_site, up_site])
+                H += -2*Jy * Pauli(N_total, Y=[current_site, up_site])
+                H += -2*Jz * Pauli(N_total, Z=[current_site, up_site])
+            end
+        end
+    end
+    
+    # External magnetic field terms
+    for site in 1:N_total
+        H += x * Pauli(N_total, X=[site])
+        H += y * Pauli(N_total, Y=[site]) 
+        H += z * Pauli(N_total, Z=[site])
+    end
+
+    DBF.coeff_clip!(H, thresh=eps_coeff)
+    return H
+end
+
 # - - - - - - - - - - - - -
 # Fermionic Hamiltonians
 # - - - - - - - - - - - - -
