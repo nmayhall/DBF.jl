@@ -184,13 +184,20 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             n_body = 2,
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
-            evolve_weight_thresh=20,
+            evolve_weight_thresh=nothing,
             grad_coeff_thresh=1e-8,
-            grad_weight_thresh=10,
-            search_n_top=1000,
-            extra_diag=nothing) where {N,T}
+            grad_weight_thresh=nothing,
+            search_n_top=1000) where {N,T}
+        
+    if grad_weight_thresh === nothing
+        grad_weight_thresh = N
+    end
+    if evolve_weight_thresh === nothing
+        evolve_weight_thresh = N
+    end
+
     O = deepcopy(Oin)
-    generators = Vector{PauliBasis}([])
+    generators = Vector{PauliBasis{N}}([])
     angles = Vector{Float64}([])
     norm_old = norm(offdiag(O))
 
@@ -201,6 +208,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     S = PauliSum(N)
     for i in 1:N 
         S += Pauli(N, Z=[i])
+        # S += Pauli(N, X=[i])
 
         n_body > 1 || continue
 
@@ -242,11 +250,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
        
         # Create the iteration dependent pool
-        pool = max_of_commutator2(S, O, n_top=search_n_top)
+        # pool = max_of_commutator2(S, O, n_top=search_n_top)
         # pool = S*O - O*S
-        # pool = commute_with_Zs(O)
+        pool = commute_with_Zs(O)
         coeff_clip!(pool, thresh=grad_coeff_thresh)
-        # weight_clip!(pool, grad_weight_thresh)
+        weight_clip!(pool, grad_weight_thresh)
         pool = find_top_k(pool, search_n_top)
        
         if length(pool) == 0
@@ -293,11 +301,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
            
             #
             # make sure energy lowering is large enough to warrent evolving
-            # costi(0) - costi(θi) > evolve_coeff_thresh || continue
             costi(0) - costi(θi) > grad_coeff_thresh || continue
 
-            n_rots < search_n_top || break 
-            
+            # n_rots < search_n_top || break 
             #See if we can do a cheap clifford operation
             # if costi(0) - costi(π/2) > evolve_coeff_thresh 
             #     θi = π/2

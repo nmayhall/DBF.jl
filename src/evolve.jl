@@ -33,6 +33,27 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     return cos_branch 
 end
 
+
+function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real}; 
+                thresh=1e-3,
+                ψ=Ket{N}(0)) where {N,T}
+    expvals = Vector{T}([])
+    err = 0
+    Ot = deepcopy(O0)
+    for (gi,θi) in zip(g,θ)
+            
+        Ot = DBF.evolve(Ot, gi, θi)
+        
+        e1 = expectation_value(Ot,ψ)
+        DBF.coeff_clip!(Ot, thresh=thresh)
+        e2 = expectation_value(Ot,ψ)
+
+        err += e2 - e1
+    end
+    return Ot, err
+end    
+
+
 """
     dissipate!(O::PauliSum, lmax::Int, γ::Real)
 

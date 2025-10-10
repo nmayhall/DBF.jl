@@ -24,7 +24,7 @@ function dbf_diag(Oin::PauliSum{N,T};
     G_old = Pauli(N)
 
 
-    verbose < 1 || @printf(" %6s %12s %12s %12s %12s G\n", "Iter", "θ", "|O|", "|od(O)|", "len(O)")
+    verbose < 1 || @printf(" %6s %12s %12s %12s %12s G\n", "Iter", "θ", "|O|", "|diag(O)|", "len(O)")
     for iter in 1:max_iter
         S = diag(O)
 

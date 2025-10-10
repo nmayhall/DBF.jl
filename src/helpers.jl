@@ -95,8 +95,12 @@ function weight(p::PauliBasis)
     return count_ones(p.x | p.z)
 end
 
+function coeff_clip!(ps::KetSum{N}; thresh=1e-16) where {N}
+    return filter!(p->abs(p.second) > thresh, ps)
+end
+
 function coeff_clip!(ps::PauliSum{N}; thresh=1e-16) where {N}
-    filter!(p->abs(p.second) > thresh, ps)
+    return filter!(p->abs(p.second) > thresh, ps)
 end
 
 function coeff_clip(ps::PauliSum{N}; thresh=1e-16) where {N}
@@ -104,11 +108,11 @@ function coeff_clip(ps::PauliSum{N}; thresh=1e-16) where {N}
 end
 
 function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
-    filter!(p->weight(p.first) <= max_weight, ps)
+    return filter!(p->weight(p.first) <= max_weight, ps)
 end
 
 function majorana_weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
-    filter!(p->majorana_weight(p.first) <= max_weight, ps)
+    return filter!(p->majorana_weight(p.first) <= max_weight, ps)
 end
 
 function reduce_by_1body(p::PauliBasis{N}, ψ) where N
@@ -267,4 +271,109 @@ function get_weight_probs(O::PauliSum{N}) where N
         probs[weight(p)] += abs2(c) 
     end
     return probs 
+end
+
+function add_single_excitations(k::Ket{N}) where N
+    s = KetSum(N)
+    println(" here")
+    s[k] = 1
+    for i in 1:N
+        for j in 1:N
+            i != j || continue
+            c,b = Pauli(N, X=[i, j]) * k
+            # count_ones(k.v) == count_ones(b.v) || continue 
+            coeff = get(s, b, 0)
+            s[b] = coeff + c
+        end
+    end
+    # for (k,c) in s 
+    #     @show count_ones(k.v)
+    # end
+    return s
+end
+
+"""
+    Base.Matrix(p::PauliSum{N,T}, Vector{Ket{N}}) where {N,T}
+
+Build Matrix representation of `p` in the space dfined by `S`
+"""
+function Base.Matrix(p::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
+    nS = length(S)
+    M = zeros(T,nS,nS)
+    for i in 1:nS
+        M[i,i] = expectation_value(p,S[i])
+        for j in i+1:nS
+            M[i,j] = matrix_element(S[i]',p,S[j])
+            M[j,i] = matrix_element(S[j]',p,S[i])
+        end
+    end
+    return M
+end
+
+
+function Base.:*(O::PauliSum{N,T}, k::Ket{N}) where {N,T}
+    out = KetSum(N)
+    for (p,c) in O
+        c2,k2 = p*k
+        tmp = get(out, k2, 0.0)
+        out[k2] = tmp + c2*c
+    end
+    return out 
+end
+
+"""
+    pt2(H::PauliSum{N,T}, k::Ket{N}) where {N,T}
+
+e2 = |<k|Ho|x>|^2 / (e0 - <x|Hd|x>)
+"""
+function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
+    Hd = diag(H)
+    e2 = T(0)
+    e0 = expectation_value(Hd,ψ)
+
+    # Build [X][Z] container
+    h = Dict{Int128,Dict{Int128,Float64}}()
+    for (p,c) in H
+        dx = get(h, p.x, Dict{Int128,Float64}())
+        dxz = get(dx, p.z, 0.0)
+        dx[p.z] = dxz + c
+        h[p.x] = dx
+    end
+
+    for (x,dx) in h
+
+        # make sure p isn't diagonal
+        x != 0 || continue       
+        
+        σHψ = 0
+        σ = Ket{N}(0) 
+        for (z,c) in h[x]
+            pzx = PauliBasis{N}(z,x)
+            czx, σ = pzx * ψ
+            σHψ += czx * c 
+        end
+        e2 +=  abs2(σHψ) / (e0 - expectation_value(Hd, σ))
+        # c2,k2 = p*k
+        
+        # k2 != k || error(" k==k2")
+        # e2 += (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
+        # e2 += 1 / (e0 - expectation_value(Hd, k2))
+        # e2 += 1 / (e0)
+        # @show (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
+    end
+    return e0, e2
+end
+
+function PauliOperators.expectation_value(O::PauliSum, v::KetSum)
+    ev = 0
+    for (p,c) in O
+        for (k1,c1) in v
+            ev += expectation_value(p,k1)*c*c1'*c1
+            for (k2,c2) in v
+                k2 != k1 || continue
+                ev += matrix_element(k2', p, k1)*c*c2'*c1
+            end
+        end
+    end
+    return ev
 end
