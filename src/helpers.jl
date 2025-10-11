@@ -297,14 +297,43 @@ end
 
 Build Matrix representation of `p` in the space dfined by `S`
 """
-function Base.Matrix(p::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
+# function Base.Matrix(p::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
+#     nS = length(S)
+#     M = zeros(T,nS,nS)
+#     for i in 1:nS
+#         M[i,i] = expectation_value(p,S[i])
+#         for j in i+1:nS
+#             M[i,j] = matrix_element(S[i]',p,S[j])
+#             M[j,i] = matrix_element(S[j]',p,S[i])
+#         end
+#     end
+#     return M
+# end
+function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
     nS = length(S)
+    
+    # Build [X][Z] container
+    o = Dict{Int128,Dict{Int128,Float64}}()
+    for (p,c) in O
+        dx = get(o, p.x, Dict{Int128,Float64}())
+        dxz = get(dx, p.z, 0.0)
+        dx[p.z] = dxz + c
+        o[p.x] = dx
+    end
+
     M = zeros(T,nS,nS)
     for i in 1:nS
-        M[i,i] = expectation_value(p,S[i])
+        M[i,i] = expectation_value(O,S[i])
         for j in i+1:nS
-            M[i,j] = matrix_element(S[i]',p,S[j])
-            M[j,i] = matrix_element(S[j]',p,S[i])
+            x = S[i].v ⊻ S[j].v
+            for (z,c) in o[x]
+                p = PauliBasis{N}(z,x)
+                phase, k = p*S[j]
+                M[i,j] += phase*c
+
+                phase, k = p*S[i]
+                M[j,i] += phase*c
+            end
         end
     end
     return M
@@ -340,6 +369,7 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
         h[p.x] = dx
     end
 
+    @show length(h), length(H)
     for (x,dx) in h
 
         # make sure p isn't diagonal

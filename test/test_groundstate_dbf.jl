@@ -112,6 +112,10 @@ end
     ecepa = Hmat[1,2:end]'*inv(A)*Hmat[2:end,1]
     @show real(e0), real(ecepa), real(e0) + real(ecepa)
 
+    # Hmat2 = DBF.Matrix2(H,basis)
+    # @test norm(Hmat-Hmat2) < 1e-13
+    # @time Hmat = Matrix(H,basis)
+    # @time Hmat2 = DBF.Matrix2(H,basis)
 end
 
 # test()

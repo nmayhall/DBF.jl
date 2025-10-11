@@ -13,12 +13,19 @@ function run()
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
     # H = DBF.heisenberg_2D(7, 7, -0, -0, -1, x=.1)
     DBF.coeff_clip!(H)
+   
+    # Transform H to make |000> the most stable bitstring
+    for i in 1:N
+        if i%2 == 0
+            H = Pauli(N, X=[i]) * H * Pauli(N, X=[i])
+        end
+    end 
+    
     H0 = deepcopy(H)
-    println(" Original H:")
     # display(H)
     
-    ψ = Ket([i%2 for i in 1:N])
-    # ψ = Ket([0 for i in 1:N])
+    # ψ = Ket([i%2 for i in 1:N])
+    ψ = Ket([0 for i in 1:N])
     # ψ += Ket([i%2 for i in 0:N-1])
     # PauliOperators.scale!(ψ, 1/norm(ψ))
 
