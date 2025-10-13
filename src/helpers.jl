@@ -335,6 +335,36 @@ function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
     return M
 end
 
+function Base.Matrix(O::XZPauliSum, S::OrderedDict{Ket{N}, T}) where {N,T}
+    nS = length(S)
+    
+    def = Dict{Int128, Float64}()
+
+    M = zeros(T,nS,nS)
+    for (i,(keti,_)) in enumerate(S)
+        # M[i,i] = expectation_value(O,keti)
+
+        for (j,(ketj,_)) in enumerate(S)
+            j >= i || continue
+            x = keti.v ⊻ ketj.v
+            ox = get(O, x, def)
+            for (z,c) in ox
+            # for (z,c) in o[x]
+                p = PauliBasis{N}(z,x)
+                phase,_ = p*ketj
+                M[i,j] += phase*c
+
+                j > i || continue
+                phase,_  = p*keti
+                M[j,i] += phase*c
+            end
+        end
+    end
+    return M
+end
+
+
+
 
 function Base.:*(O::PauliSum{N,T}, k::Ket{N}) where {N,T}
     out = KetSum(N)
