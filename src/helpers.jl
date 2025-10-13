@@ -275,7 +275,6 @@ end
 
 function add_single_excitations(k::Ket{N}) where N
     s = KetSum(N)
-    println(" here")
     s[k] = 1
     for i in 1:N
         for j in 1:N
@@ -321,12 +320,16 @@ function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
         o[p.x] = dx
     end
 
+    def = Dict{Int128, Float64}()
+
     M = zeros(T,nS,nS)
     for i in 1:nS
         M[i,i] = expectation_value(O,S[i])
         for j in i+1:nS
             x = S[i].v ⊻ S[j].v
-            for (z,c) in o[x]
+            ox = get(o, x, def)
+            for (z,c) in ox
+            # for (z,c) in o[x]
                 p = PauliBasis{N}(z,x)
                 phase, k = p*S[j]
                 M[i,j] += phase*c
@@ -368,6 +371,7 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
         dx[p.z] = dxz + c
         h[p.x] = dx
     end
+    def = Dict{Int128, Float64}()
 
     @show length(h), length(H)
     for (x,dx) in h
@@ -376,8 +380,10 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
         x != 0 || continue       
         
         σHψ = 0
-        σ = Ket{N}(0) 
-        for (z,c) in h[x]
+        σ = Ket{N}(0)
+        
+        hx = get(h, x, def)
+        for (z,c) in hx
             pzx = PauliBasis{N}(z,x)
             czx, σ = pzx * ψ
             σHψ += czx * c 

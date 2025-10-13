@@ -233,6 +233,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
     end
     # S = S * (1/length(S))
+    # display(S)
+    @show length(S)
     
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
