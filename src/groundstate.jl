@@ -356,6 +356,20 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             verbose < 1 || @printf(" Converged.\n")
             break
         end
+        n_dissipate = 0
+        t = 1.1
+        for p in PauliBasis{N}
+            anti = optimize_dissipation(O,p,ψ)
+            if real(anti) > 0
+                n_dissipate += 1
+                # @show p, anti
+                for (q,c) in O
+                    !PauliOperators.commute(q,p) || continue
+                    O[q] *= exp(-2*t) 
+                end
+            end
+        end
+        @show n_dissipate
 
        
         if iter == max_iter
@@ -393,4 +407,20 @@ function commute_with_Zs(O::PauliSum{N}) where N
         sum!(out_tot, out)
     end
     return out_tot
+end
+
+"""
+    optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
+
+Find the optimal t that minimizes `<ψ|D_G(t) O |ψ>`
+
+Return the optimal time, as well as the continious function that maps θ to the expectation value.
+"""
+function optimize_dissipation(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; verbose=1) where {N,T}
+    Oanti = T(0)
+    for (p,c) in O
+        !PauliOperators.commute(p,G) || continue
+        Oanti += expectation_value(p,ψ)*c
+    end
+    return Oanti
 end
