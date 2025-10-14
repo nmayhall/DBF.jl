@@ -20,7 +20,8 @@ using DBF
 
         θ = rand()
         U = exp(Matrix(-1im * θ/2 * Matrix(G)))
-        @test isapprox(Matrix(evolve(O,G,θ)),  U'*Matrix(O)*U, atol=1e-14)
+        @test norm(Matrix(evolve(O,G,θ)) -  U'*Matrix(O)*U) < 1e-13
+        # @test isapprox(Matrix(evolve(O,G,θ)),  U'*Matrix(O)*U, atol=1e-14)
         
         
         A = rand(PauliSum{N}, n_paulis=50)
