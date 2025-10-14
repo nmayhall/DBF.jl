@@ -6,7 +6,7 @@ using LinearAlgebra
 using OrderedCollections
 
 # Hmap = FermiCG.LinOpMat{T}(matvec, length(vec), true)
-XZPauliSum{T} = Dict{Int128,Dict{Int128,T}}
+XZPauliSum{T} = Dict{Int128,Vector{Tuple{Int128,T}}}
 
 
 include("helpers.jl")

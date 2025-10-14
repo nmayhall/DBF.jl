@@ -240,6 +240,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
     verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
     verbose < 1 || @printf(" %12s", "total_error")
+    verbose < 1 || @printf(" %12s", "E(2)")
     verbose < 1 || @printf(" %12s", "|H|")
     verbose < 1 || @printf(" %8s", "#PoolOps")
     verbose < 1 || @printf(" %4s", "#Rot")
@@ -338,12 +339,16 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             n_rots += 1
             flush(stdout)
         end
+        verbose < 2 || println("\n Compute PT2 correction")
+        e0, e2 = pt2(O, ψ)
+        verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
         
         var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %12.8f", ecurr)
         verbose < 1 || @printf(" %12.8f", norm_new)
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", real(e2))
         verbose < 1 || @printf(" %12.8f", norm(O))
         verbose < 1 || @printf(" %8i", length(pool))
         verbose < 1 || @printf(" %4i", n_rots)

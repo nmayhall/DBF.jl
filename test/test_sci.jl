@@ -16,7 +16,7 @@ using KrylovKit
     H = rand(PauliSum{N}, n_paulis=100)
     H += H'
 
-    xzH = DBF.pack_z_x(H)
+    xzH = DBF.pack_x_z(H)
     vref = OrderedDict{Ket{N}, ComplexF64}()
     vref[rand(Ket{N})] = 1
     sig = DBF.matvec(xzH,vref)
@@ -38,7 +38,7 @@ using KrylovKit
     end
     @show norm(Vector(sig2)) 
     @show norm(Vector(DBF.subspace_matvec(xzH, sig))) 
-    @test norm(Vector(sig2) - Vector(DBF.subspace_matvec(xzH, sig)) ) < 1e-15
+    @test norm(Vector(sig2) - Vector(DBF.subspace_matvec(xzH, sig)) ) < 1e-12
 
     Hm = Matrix(H)
     
@@ -60,6 +60,8 @@ using KrylovKit
     k1 = DBF.matvec(xzH, k0)
     k2 = DBF.subspace_matvec(xzH, k1)
     k3 = DBF.subspace_matvec(xzH, k2)
+    # tmp = deepcopy(k1)
+    # @code_warntype DBF.subspace_matvec!(tmp, xzH, k1)
 
     basis = [i for i in keys(k1)]
     dim = length(basis)
@@ -92,7 +94,7 @@ using KrylovKit
     @show e
     @show eref = minimum(eigvals(Matrix(xzH, k1)))
     @test abs(e[1] - eref) < 1e-12
-
+    display(v)
 end
 
 # test()

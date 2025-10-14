@@ -311,9 +311,9 @@ Build Matrix representation of `p` in the space dfined by `S`
 function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
     nS = length(S)
     
-    o = pack_z_x(O)
+    o = pack_x_z(O)
 
-    def = Dict{Int128, Float64}()
+    def = Vector{Tuple{Int128, Float64}}()
 
     M = zeros(T,nS,nS)
     for i in 1:nS
@@ -322,7 +322,6 @@ function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
             x = S[i].v ⊻ S[j].v
             ox = get(o, x, def)
             for (z,c) in ox
-            # for (z,c) in o[x]
                 p = PauliBasis{N}(z,x)
                 phase, k = p*S[j]
                 M[i,j] += phase*c
@@ -386,10 +385,9 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
     e2 = T(0)
     e0 = expectation_value(Hd,ψ)
 
-    h = pack_z_x(H)
-    def = Dict{Int128, Float64}()
+    h = pack_x_z(H)
+    def = Vector{Tuple{Int128, Float64}}()
 
-    @show length(h), length(H)
     for (x,dx) in h
 
         # make sure p isn't diagonal
@@ -433,17 +431,16 @@ end
 """
     pack_z_x(O::PauliSum{N,T}) where {N,T}
 
-Convert PauliSum into a Dict{Int128,Dict{Int128,Float64}}
+Convert PauliSum into a Dict{Int128,Vector{Tuple{Int128,Float64}}}
 This allows us to access Pauli's by first specifying `x`, 
 then 'z'. 
 """
-function pack_z_x(H::PauliSum{N,T}) where {N,T}
+function pack_x_z(H::PauliSum{N,T}) where {N,T}
     # Build [X][Z] container
-    h = Dict{Int128,Dict{Int128,Float64}}()
+    h = Dict{Int128,Vector{Tuple{Int128,Float64}}}()
     for (p,c) in H
-        dx = get(h, p.x, Dict{Int128,Float64}())
-        dxz = get(dx, p.z, 0.0)
-        dx[p.z] = dxz + c
+        dx = get(h, p.x, Vector{Tuple{Int128,Float64}}())
+        push!(dx, (p.z,c))
         h[p.x] = dx
     end
     return h
