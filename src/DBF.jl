@@ -21,5 +21,7 @@ export dbf_diag
 export dbf_groundstate
 export dbf_disentangle
 export adapt 
+export adapt_fermion
+export dbf_groundstate_test
 
 end

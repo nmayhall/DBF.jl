@@ -82,9 +82,10 @@ function heisenberg_2D(Nx, Ny, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
 end
 
 """
- - - - Heisenberg model 2D (snake/zizag ordering) - - -
+ - - - Heisenberg model 2D (snake/zizag ordering) Not working with periodic. - - -
 """
-function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Float64; x=0, y=0, z=0, snake_ordering::Bool=false)
+function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Float64; x=0, y=0, z=0, 
+                             periodic::Bool=false,  snake_ordering::Bool=false)
     Nsites  = Lx * Ly
     N_total = Nsites
     H = PauliSum(N_total, Float64)
@@ -110,13 +111,13 @@ function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Flo
         end
     end
 
-# Nearest-neighbor interactions
-    for j in 0:Ly-1  # Row index
-        for i in 0:Lx-1  # Column index
+    # Nearest-neighbor interactions
+    for j in 1:Ly  # Row index
+        for i in 1:Lx  # Column index
             current_site = site_index(i, j)
             
             # Right neighbor (i+1, j)
-            if i < Lx - 1 || periodic
+            if i < Lx || periodic
                 right_i = periodic ? (i + 1) % Lx : i + 1
                 right_site = site_index(right_i, j)
                 
@@ -126,7 +127,7 @@ function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Flo
             end
             
             # Up neighbor (i, j+1)  
-            if j < Ly - 1 || periodic
+            if j < Ly || periodic
                 up_j = periodic ? (j + 1) % Ly : j + 1
                 up_site = site_index(i, up_j)
                 
@@ -144,7 +145,7 @@ function heisenberg_2D_snake(Lx::Int, Ly::Int, Jx::Float64, Jy::Float64, Jz::Flo
         H += z * Pauli(N_total, Z=[site])
     end
 
-    DBF.coeff_clip!(H, thresh=eps_coeff)
+    DBF.coeff_clip!(H)
     return H
 end
 
@@ -335,9 +336,6 @@ function fermi_hubbard_2D_snake(Lx::Int, Ly::Int, t::Float64, U::Float64; snake_
         end
     end
 
-    # small tolerance for dropping tiny coeffs
-    eps_coeff = 1e-12
-
     # HOPPING: nearest-neighbor pairs (right and down) — add h.c.; both spins
     for x in 1:Lx, y in 1:Ly
         jsite = site_index(x, y)
@@ -374,6 +372,6 @@ function fermi_hubbard_2D_snake(Lx::Int, Ly::Int, t::Float64, U::Float64; snake_
         H += interaction_term
     end
 
-    DBF.coeff_clip!(H, thresh=eps_coeff)
+    DBF.coeff_clip!(H)
     return H
 end

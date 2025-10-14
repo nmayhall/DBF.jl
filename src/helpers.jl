@@ -39,6 +39,17 @@ function pauli_weight(Pb::Union{PauliBasis{N}, Pauli{N}}) where N
     return w
 end
 
+"""
+HS norm in Pauli basis: sum_P |c_P|^2.
+"""
+function hs_norm2(ps::PauliSum)
+    s = 0.0
+    @inbounds for (_, c) in ps
+        s += abs2(c)
+    end
+    return s
+end
+
 function inner_product(O1::PauliSum{N,T}, O2::PauliSum{N,T}) where {N,T}
     out = T(0)
     if length(O1) < length(O2)
@@ -95,12 +106,29 @@ function coeff_clip(ps::PauliSum{N}; thresh=1e-16) where {N}
     return filter(p->abs(p.second) > thresh, ps)
 end
 
+"""
+    Clip based on Pauli weight.
+    Performs the pruning by removing all terms with weight > max_weight.
+"""
 function weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
     filter!(p->weight(p.first) <= max_weight, ps)
 end
 
 function majorana_weight_clip!(ps::PauliSum{N}, max_weight::Int) where {N}
     filter!(p->majorana_weight(p.first) <= max_weight, ps)
+end
+
+"""
+    Combined weight and coefficient clipping.
+    w_type = 0 : Pauli weight
+    w_type = 1 : Majorana weight
+"""
+function clip_thresh_weight!(ps::PauliSum{N}; thresh=1e-16, lc = 0, w_type = 0) where {N}
+    if w_type == 0 
+        filter!(p->(weight(p.first) <= lc) && (abs(p.second) > thresh) , ps)
+    else
+        filter!(p->(majorana_weight(p.first) <= lc) && (abs(p.second) > thresh) , ps)
+    end     
 end
 
 function reduce_by_1body(p::PauliBasis{N}, ψ) where N
