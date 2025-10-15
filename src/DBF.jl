@@ -26,6 +26,9 @@ export inner_product
 export dbf_diag
 export dbf_groundstate
 export dbf_disentangle
-export adapt 
+export adapt
+export coeff_clip!
+export pack_x_z
+export project 
 
 end

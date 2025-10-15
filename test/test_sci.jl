@@ -14,18 +14,19 @@ using KrylovKit
     Random.seed!(2)
     N = 9
     H = rand(PauliSum{N}, n_paulis=100)
+    DBF.coeff_clip!(H)
     H += H'
 
     xzH = DBF.pack_x_z(H)
-    vref = OrderedDict{Ket{N}, ComplexF64}()
+    vref = KetSum(N, T=ComplexF64)
     vref[rand(Ket{N})] = 1
     sig = DBF.matvec(xzH,vref)
     sig2 = DBF.matvec(xzH,sig)
 
     # display(vref)
     # display(sig)
-    @test norm(Matrix(H)*Matrix(vref) - Matrix(sig) ) < 1e-15
-    @test norm(Matrix(H)*Matrix(H)*Matrix(vref) - Matrix(DBF.matvec(xzH,sig)) ) < 1e-12
+    @test norm(Matrix(H)*Vector(vref) - Vector(sig) ) < 1e-15
+    @test norm(Matrix(H)*Matrix(H)*Vector(vref) - Vector(DBF.matvec(xzH,sig)) ) < 1e-12
 
     @show length(sig), length(sig2)
     # #project sig2 onto sig
@@ -50,8 +51,8 @@ using KrylovKit
         end
     end
 
-    @test norm(Matrix(xzH, sig) - Matrix(H, [i for i in keys(sig)])) < 1e-15
-    @time Matrix(xzH, sig) 
+    @test norm(Matrix(xzH, collect(keys(sig))) - Matrix(H, [i for i in keys(sig)])) < 1e-15
+    @time Matrix(xzH, collect(keys(sig))) 
     @time Matrix(H, [i for i in keys(sig)])
     # @test norm(Matrix(xzH, sig)*Vector([s for (k,s) in sig]) - Matrix(DBF.subspace_matvec(xzH,sig)))
 
@@ -60,30 +61,16 @@ using KrylovKit
     k1 = DBF.matvec(xzH, k0)
     k2 = DBF.subspace_matvec(xzH, k1)
     k3 = DBF.subspace_matvec(xzH, k2)
-    # tmp = deepcopy(k1)
-    # @code_warntype DBF.subspace_matvec!(tmp, xzH, k1)
 
     basis = [i for i in keys(k1)]
     dim = length(basis)
-    function my_matvec(v)
-        n = length(v)
-        s = zeros(eltype(v), size(v))
-        vin = deepcopy(k1)
-        for idx in 1:n
-            vin[basis[idx]] = v[idx]
-        end
-        tmp = DBF.subspace_matvec(xzH, vin)
-        for idx in 1:n
-            s[idx] = tmp[basis[idx]]
-        end
-        return s
-    end
-    vguess = zeros(ComplexF64, dim)
+
+    Hmap = LinearMap(xzH, basis)
+    vguess = zeros(dim)
     vguess[1] = 1
-
-    Hmap = LinearMap(my_matvec, dim, dim; issymmetric=true, ismutating=false, ishermitian=true)
-
+    
     # @show Hmap * vguess
+    
     time = @elapsed e, v, info = KrylovKit.eigsolve(Hmap, vguess, 1, :SR, 
                                                 verbosity   = 1, 
                                                 maxiter     = 10, 
@@ -92,9 +79,88 @@ using KrylovKit
                                                 eager       = true,
                                                 tol         = 1e-8)
     @show e
-    @show eref = minimum(eigvals(Matrix(xzH, k1)))
+    @show eref = minimum(eigvals(Matrix(xzH, collect(keys(k1)))))
     @test abs(e[1] - eref) < 1e-12
-    display(v)
+end
+
+@testset "cepa" begin
+# function test()
+    println("\n CEPA test")
+    Random.seed!(2)
+    N = 8
+    
+    H = DBF.heisenberg_1D(N, -1, -1, -1, x=.0)
+    H += H'
+    for i in 1:N
+        if i%2 == 1
+            H = Pauli(N, X=[i]) * H * Pauli(N, X=[i])
+        end
+    end
+    
+    
+    # kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 0:2^N-1])
+    # @show ψ = Ket{N}(kidx) 
+    
+    ψ = Ket{N}(Int128(0))
+    @show ψ
+
+    @time H, g, θ = DBF.dbf_groundstate(H, ψ,
+                                n_body=1,
+                                max_iter=120,
+                                conv_thresh=1e-3,
+                                evolve_coeff_thresh=1e-4,
+                                evolve_weight_thresh=49,
+                                grad_coeff_thresh=1e-3,
+                                search_n_top=100)
+    # @time H, g, θ = DBF.dbf_diag(H, 
+    #                             max_iter=120,
+    #                             conv_thresh=1e-3,
+    #                             evolve_coeff_thresh=1e-3,
+    #                             search_n_top=10)
+    n1 = norm(H)^2
+    for (i,(c,p)) in enumerate(zip(DBF.get_weight_counts(H), DBF.get_weight_probs(H)))
+        @printf(" Weight: %4i %12i %12.8f\n", i, c, p/n1)
+    end
+       
+    basis = collect(keys(rand(KetSum{N}, n_terms=23)))
+    Hmap = LinearMap(DBF.pack_x_z(H), basis)
+    Hmat = Matrix(H)
+    Hmatss = zeros(length(basis), length(basis)) 
+    idx = PauliOperators.index
+    for (i,keti) in enumerate(basis)
+        for (j,ketj) in enumerate(basis)
+            Hmatss[i,j] = Hmat[idx(keti), idx(ketj)]
+        end
+    end
+    vvec = rand(length(basis))
+    vvec = vvec/norm(vvec)
+    v = KetSum(basis)
+    fill!(v,vvec,basis)
+    s = DBF.subspace_matvec(pack_x_z(H),v)
+    sfull = DBF.matvec(pack_x_z(H),v)
+    @test norm(Vector(s) - Vector(project(sfull, basis))) < 1e-12
+    
+    # Compare subspace matvec with full followed by projection
+    @test norm(Vector(s,basis) - Hmatss*vvec) < 1e-12
+    
+    # Compare the LinearMap (which does subspace matvec) to full matvec, followed by projection into basis
+    @test norm(Hmap*vvec - Vector(project(DBF.matvec(pack_x_z(H),v), basis), basis)) < 1e-12
+
+
+    eexact,_ = eigvals(Matrix(H))
+    @printf(" Exact: %12.8f\n", eexact[1])
+
+    e0, e, v = DBF.fois_ci(H, ψ, thresh=1e-2)
+    # @test abs(e[1] - -58.34688027) < 1e-6
+    
+    e0, e = DBF.cepa(H, ψ, thresh=1e-2)
+    # @test abs(e - -58.42884542) < 1e-6
+    
+    e0, e2 = DBF.pt2(H, ψ)
+    @printf(" E0 = %12.8f EPT2 = %12.8f \n", e0, e0+e2)
+    # @test abs(e0+e2 - -57.74827344) < 1e-6
+    
+
 end
 
 # test()

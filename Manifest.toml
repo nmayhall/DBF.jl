@@ -579,7 +579,7 @@ version = "2.8.3"
 
 [[deps.PauliOperators]]
 deps = ["BenchmarkTools", "LinearAlgebra", "Printf", "Random", "StaticArrays"]
-git-tree-sha1 = "58a82ab26a0200b4c6b4cc0d54100c8960c58034"
+git-tree-sha1 = "32cb558466e2dcb18483b49a14b42d7c45a8e894"
 repo-rev = "main"
 repo-url = "https://github.com/nmayhall/PauliOperators.jl"
 uuid = "be646426-f34c-4536-b1d4-a45a9633e6db"

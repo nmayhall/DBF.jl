@@ -334,16 +334,16 @@ function Base.Matrix(O::PauliSum{N,T}, S::Vector{Ket{N}}) where {N,T}
     return M
 end
 
-function Base.Matrix(O::XZPauliSum, S::OrderedDict{Ket{N}, T}) where {N,T}
-    nS = length(S)
+function Base.Matrix(O::XZPauliSum{T}, basis::Vector{Ket{N}}) where {N,T}
+    n = length(basis)
     
     def = Dict{Int128, Float64}()
 
-    M = zeros(T,nS,nS)
-    for (i,(keti,_)) in enumerate(S)
+    M = zeros(ComplexF64,n,n)
+    for (i, keti) in enumerate(basis)
         # M[i,i] = expectation_value(O,keti)
 
-        for (j,(ketj,_)) in enumerate(S)
+        for (j, ketj) in enumerate(basis)
             j >= i || continue
             x = keti.v ⊻ ketj.v
             ox = get(O, x, def)
@@ -362,6 +362,26 @@ function Base.Matrix(O::XZPauliSum, S::OrderedDict{Ket{N}, T}) where {N,T}
     return M
 end
 
+function Base.Matrix(k::KetSum{N,T}, S::Vector{Ket{N}}) where {N,T}
+    nS = length(S)
+    v = zeros(T,nS,1)
+    length(k) == length(S) || throw(DimensionMismatch)
+    for (i,keti) in enumerate(S)
+        v[i,1] = k[keti]
+    end
+    return v
+end
+
+function Base.Vector(k::KetSum{N,T}, S::Vector{Ket{N}}) where {N,T}
+    nS = length(S)
+    v = zeros(T,nS)
+    length(k) == length(S) || throw(DimensionMismatch)
+    for (i,keti) in enumerate(S)
+        v[i] = k[keti]
+    end
+    return v
+end
+
 
 
 
@@ -373,45 +393,6 @@ function Base.:*(O::PauliSum{N,T}, k::Ket{N}) where {N,T}
         out[k2] = tmp + c2*c
     end
     return out 
-end
-
-"""
-    pt2(H::PauliSum{N,T}, k::Ket{N}) where {N,T}
-
-e2 = |<k|Ho|x>|^2 / (e0 - <x|Hd|x>)
-"""
-function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
-    Hd = diag(H)
-    e2 = T(0)
-    e0 = expectation_value(Hd,ψ)
-
-    h = pack_x_z(H)
-    def = Vector{Tuple{Int128, Float64}}()
-
-    for (x,dx) in h
-
-        # make sure p isn't diagonal
-        x != 0 || continue       
-        
-        σHψ = 0
-        σ = Ket{N}(0)
-        
-        hx = get(h, x, def)
-        for (z,c) in hx
-            pzx = PauliBasis{N}(z,x)
-            czx, σ = pzx * ψ
-            σHψ += czx * c 
-        end
-        e2 +=  abs2(σHψ) / (e0 - expectation_value(Hd, σ))
-        # c2,k2 = p*k
-        
-        # k2 != k || error(" k==k2")
-        # e2 += (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
-        # e2 += 1 / (e0 - expectation_value(Hd, k2))
-        # e2 += 1 / (e0)
-        # @show (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
-    end
-    return e0, e2
 end
 
 function PauliOperators.expectation_value(O::PauliSum, v::KetSum)
@@ -428,8 +409,34 @@ function PauliOperators.expectation_value(O::PauliSum, v::KetSum)
     return ev
 end
 
+function PauliOperators.expectation_value(O::XZPauliSum, v::KetSum{N,T}) where {N,T}
+    ev = 0
+    for (x,zs) in O
+        for (z,c) in zs 
+            p = PauliBasis{N}(z,x)
+            for (k1,c1) in v
+                ev += expectation_value(p,k1)*c*c1'*c1
+                for (k2,c2) in v
+                    k2 != k1 || continue
+                    ev += matrix_element(k2', p, k1)*c*c2'*c1
+                end
+            end
+        end
+    end
+    return ev
+end
+function PauliOperators.expectation_value(O::XZPauliSum, v::Ket{N}) where {N}
+    ev = 0
+    haskey(O,0) || return 0.0
+    for (z,c) in O[0]
+        p = PauliBasis{N}(z,Int128(0))
+        ev += expectation_value(p,v)*c
+    end
+    return ev
+end
+
 """
-    pack_z_x(O::PauliSum{N,T}) where {N,T}
+    pack_x_z(H::PauliSum{N,T}) where {N,T}
 
 Convert PauliSum into a Dict{Int128,Vector{Tuple{Int128,Float64}}}
 This allows us to access Pauli's by first specifying `x`, 
