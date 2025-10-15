@@ -160,7 +160,8 @@ end
     @printf(" E0 = %12.8f EPT2 = %12.8f \n", e0, e0+e2)
     # @test abs(e0+e2 - -57.74827344) < 1e-6
     
-
+    # I can't quite test these yet, because the dbf_groundstate gives different results
+    # sometimes. I assume it's an issue of degenerate operators leading to different sequences. 
 end
 
 # test()

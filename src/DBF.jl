@@ -16,7 +16,7 @@ include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
 include("evolve.jl")
-include("sci.jl")
+include("schrodinger_picture.jl")
 
 
 export evolve
