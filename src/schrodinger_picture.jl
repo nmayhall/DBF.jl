@@ -206,7 +206,7 @@ cPHPc + cPHQ (EQ-QHQ)^-1 QHPc = E
 
 E0 + cPH(E-EP - H)
 """
-function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing) where N
+function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=1e-6) where N
 
     ref_basis = [ref]
     vref = KetSum(ref_basis)
@@ -239,7 +239,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing) wher
                                             maxiter     = 10,
                                             issymmetric = true,
                                             ishermitian = true,
-                                            tol         = 1e-6)
+                                            tol         = tol)
 
     e = e0 + x' * bvec
 
@@ -247,7 +247,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing) wher
     return e0, e, x, basis
 end
 
-function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing) where N
+function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6) where N
 
     ref_basis = [ref]
     vref = KetSum(ref_basis)
@@ -276,7 +276,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing)
                                                 issymmetric = true,
                                                 ishermitian = true,
                                                 eager       = true,
-                                                tol         = 1e-8)
+                                                tol         = tol)
 
     # @show size(v[1]), info
     @printf(" E0 = %12.8f E(var)  = %12.8f time: %12.8f\n", e0, e[1], time)

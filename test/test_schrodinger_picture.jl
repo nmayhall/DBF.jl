@@ -150,20 +150,20 @@ end
     # eexact,_ = eigvals(Matrix(H))
     # @printf(" Exact: %12.8f\n", eexact[1])
 
-    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-2)
+    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-2, tol=1e-5)
     # @test abs(e[1] - -58.34688027) < 1e-6
     v0 = KetSum(basis)
     fill!(v0, v[1], basis)
     
-    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-4, v0=v0)
+    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-4, v0=v0, tol=1e-5)
     # @test abs(e[1] - -58.34688027) < 1e-6
     
     
-    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-3)
+    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-3, tol=1e-5)
     x0 = KetSum(basis)
     fill!(x0, x, basis)
     
-    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-4, x0=x0)
+    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-4, x0=x0, tol=1e-5)
     
     e0, e2 = DBF.pt2(H, ψ)
     @printf(" E0 = %12.8f EPT2 = %12.8f \n", e0, e0+e2)
