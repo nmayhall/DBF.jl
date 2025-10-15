@@ -206,16 +206,16 @@ cPHPc + cPHQ (EQ-QHQ)^-1 QHPc = E
 
 E0 + cPH(E-EP - H)
 """
-function cepa(H::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
+function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing) where N
 
-    ref_basis = [v0]
+    ref_basis = [ref]
     vref = KetSum(ref_basis)
     fill!(vref, [1], ref_basis)
     b = DBF.matvec(pack_x_z(H), vref)
     coeff_clip!(b, thresh=thresh)
-    delete!(b, v0)
+    delete!(b, ref)
     basis = collect(keys(b))
-    e0 = expectation_value(H, v0)
+    e0 = expectation_value(H, ref)
     A = pack_x_z(e0*Pauli(N) - H)
     
     verbose < 1 || @printf(" Size of basis: %i\n", length(basis)) 
@@ -228,8 +228,13 @@ function cepa(H::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
     # @printf(" e0 = %12.8f e(cepa) = %12.8f\n", e0, e)
     
     Amap = LinearMap(A, basis)
-    # time = @elapsed x, info = KrylovKit.linsolve(Amap, bvec,
-    time = @elapsed x, info = KrylovKit.linsolve(Amap, bvec,
+    xguess = zeros(length(basis))
+    
+    if x0 !== nothing
+        xguess = Vector(project(x0, basis), basis)
+    end
+    
+    time = @elapsed x, info = KrylovKit.linsolve(Amap, bvec, xguess,
                                             verbosity   = 4,
                                             maxiter     = 10,
                                             issymmetric = true,
@@ -239,19 +244,19 @@ function cepa(H::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
     e = e0 + x' * bvec
 
     @printf(" E0 = %12.8f E(cepa) = %12.8f time: %12.8f\n", e0, e, time)
-    return e0, e
+    return e0, e, x, basis
 end
 
-function fois_ci(Hin::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
+function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing) where N
 
-    ref_basis = [v0]
+    ref_basis = [ref]
     vref = KetSum(ref_basis)
     fill!(vref, [1], ref_basis)
     H = pack_x_z(Hin)
     fois = DBF.matvec(H, vref)
     coeff_clip!(fois, thresh=thresh)
     basis = collect(keys(fois))
-    e0 = expectation_value(H, v0)
+    e0 = expectation_value(H, ref)
 
     verbose < 1 || @printf(" Size of basis: %i\n", length(basis)) 
 
@@ -261,6 +266,9 @@ function fois_ci(Hin::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
    
     vref = project(vref, basis)
     vguess = Vector(vref, basis)
+    if v0 !== nothing
+        vguess = Vector(project(v0, basis), basis)
+    end
     Hmap = LinearMap(H, basis)
     time = @elapsed e, v, info = KrylovKit.eigsolve(Hmap, vguess, 1, :SR,
                                                 verbosity   = 3,
@@ -270,9 +278,9 @@ function fois_ci(Hin::PauliSum, v0::Ket{N}; thresh=1e-4, verbose=4) where N
                                                 eager       = true,
                                                 tol         = 1e-8)
 
-
+    # @show size(v[1]), info
     @printf(" E0 = %12.8f E(var)  = %12.8f time: %12.8f\n", e0, e[1], time)
-    return e0, e, v
+    return e0, e, v, basis
 end
 
 """

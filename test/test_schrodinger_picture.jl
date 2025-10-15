@@ -147,14 +147,23 @@ end
     @test norm(Hmap*vvec - Vector(project(DBF.matvec(pack_x_z(H),v), basis), basis)) < 1e-12
 
 
-    eexact,_ = eigvals(Matrix(H))
-    @printf(" Exact: %12.8f\n", eexact[1])
+    # eexact,_ = eigvals(Matrix(H))
+    # @printf(" Exact: %12.8f\n", eexact[1])
 
-    e0, e, v = DBF.fois_ci(H, ψ, thresh=1e-2)
+    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-2)
+    # @test abs(e[1] - -58.34688027) < 1e-6
+    v0 = KetSum(basis)
+    fill!(v0, v[1], basis)
+    
+    e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-4, v0=v0)
     # @test abs(e[1] - -58.34688027) < 1e-6
     
-    e0, e = DBF.cepa(H, ψ, thresh=1e-2)
-    # @test abs(e - -58.42884542) < 1e-6
+    
+    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-3)
+    x0 = KetSum(basis)
+    fill!(x0, x, basis)
+    
+    e0, e, x, basis = DBF.cepa(H, ψ, thresh=1e-4, x0=x0)
     
     e0, e2 = DBF.pt2(H, ψ)
     @printf(" E0 = %12.8f EPT2 = %12.8f \n", e0, e0+e2)
