@@ -14,7 +14,7 @@ function run(; U=U, threshold=1e-3, wmax=nothing, wtype=0)
     Ly = 2
     Nsites = Lx * Ly
     N = 2 * Nsites   # 2 spin states per site
-    t = 0.10
+    t = 0.1
     H = DBF.fermi_hubbard_2D(Lx, Ly, t, U)
     #H = DBF.fermi_hubbard_2D_snake(Lx, Ly, t, U; snake_ordering=true)
     #H = DBF.hubbard_model_1D(Nsites, t, U)
@@ -28,8 +28,10 @@ function run(; U=U, threshold=1e-3, wmax=nothing, wtype=0)
 
     #ψ = Ket{N}(0)
     #ψ = Ket([i%2 for i in 1:N])
-    kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
-    ψ = Ket{N}(kidx)
+    #kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
+    #kidx = argmin([real(expectation_value(H,Ket{N}(ψi-1))) for ψi in 1:2^N])
+    #ψ = Ket{N}(kidx)
+    ψ = Ket{N}(18)
     display(ψ)
     e0 = expectation_value(H,ψ)
    
@@ -46,6 +48,7 @@ function run(; U=U, threshold=1e-3, wmax=nothing, wtype=0)
     #display(norm(H))
     #display(norm(diag(H)))
     println("Exact Ground State Energy: ", groundE)
+    #@show DBF.variance(H,ψ)
     
     e1 = expectation_value(H,ψ)
     error = abs(e1-groundE)
@@ -81,7 +84,8 @@ function run(; U=U, threshold=1e-3, wmax=nothing, wtype=0)
     ylabel!(plt3, "Loss (1 - HS-norm^2)")
     savefig(plt3, "Loss_N=$(N)_th=$(threshold)_w=$(fname_w)_type=$(wname).pdf") 
 
-    return error, dbfEs, nterms, loss, groundE
+    variance = DBF.variance(H,ψ)
+    return error, variance, dbfEs, nterms, loss, groundE
 
 end
 
@@ -101,8 +105,8 @@ end
 =#
 #run(U=0.001, threshold=1e-3, wmax=4, wtype=1)
 
-#us = [0.001, 0.09, 0.5]
-us = [0.5]#, 0.5, 1.0, 1.5]
+us = [0.001, 0.09, 0.5]
+#us = [0.0, 0.5, 1.0, 1.5]
 threshs = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-8]
 Pweights = [2, 3, 4, 5, 6, 7, 8]
 Mweights = [2, 3, 4, 5, 6, 7, 8]
@@ -110,6 +114,7 @@ Mweights = [2, 3, 4, 5, 6, 7, 8]
 Pauli_errors = Dict{String,Float64}()
 Majorana_errors = Dict{String,Float64}()
 
+variance_list = Float64[]
 absolute_errors = Float64[]
 absolute_errors_Majorana = Float64[]
 dbfEs_list = Vector{Float64}[]
@@ -122,7 +127,7 @@ for U in us
     println("========================================")
     println("---- Coefficient Thresholding Only ----")
     for thresh in threshs
-        err, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=nothing, wtype=0)
+        err,var, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=nothing, wtype=0)
 
         println("dbfEs type: ", typeof(dbfEs), " length: ", length(dbfEs))
         println(" nterms type: ", typeof(nterms), " length: ", (isa(nterms, AbstractArray) ? length(nterms) : 1))
@@ -135,6 +140,7 @@ for U in us
         push!(dbfEs_list, dbfEs)
         push!(nterms_list, nterms)
         push!(loss_list, loss)
+        push!(variance_list, var)
         @printf(" Error with coeff thresholding only (th=%1.1e): %1.5e\n", thresh, err)
 
     end
@@ -142,13 +148,15 @@ for U in us
     plt = plot()
     plt1 = plot()
     plt2 = plot()
+    plt3 = plot()
     for (i, dbfEs) in enumerate(dbfEs_list)
         steps = collect(1:length(dbfEs))
         plot!(plt, steps, dbfEs, lw=2, label="th=$(threshs[i])")#, markershape=:circle)
         plot!(plt1, steps, nterms_list[i], lw=2, label="th=$(threshs[i])")#, markershape=:circle)
         plot!(plt2, steps, loss_list[i], lw=2, label="th=$(threshs[i])")#, markershape=:circle)
     end
-    
+    steps = collect(1:length(variance_list))
+    plot!(plt3, steps, variance_list, lw=2, label="Variance", color=:gray)
     
     xlabel!(plt, "DBF Step")
     ylabel!(plt, "DBF Energy Estimate (a.u.)")
@@ -162,6 +170,10 @@ for U in us
     ylabel!(plt2, "Loss (1 - HS-norm^2)")
     savefig(plt2, "Loss_U=$(U)_th=varied_w=None.pdf")
 
+    xlabel!(plt3, "Experiment ")
+    ylabel!(plt3, "Variance")
+    savefig(plt3, "Variance_U=$(U)_th=varied_w=None.pdf")   
+
    #- Clean data lists for next round
     empty!(absolute_errors)
     empty!(dbfEs_list)
@@ -174,7 +186,7 @@ for U in us
     for thresh in threshs
         for wmax in Pweights
             # run returns errP, dbfEs, nterms, loss, groundE
-            errP, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=wmax, wtype=0)
+            errP, _, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=wmax, wtype=0)
 
             # push per-run lists (if you need them for overlay plotting)
             push!(absolute_errors, errP)
@@ -221,7 +233,7 @@ for U in us
 
     for thresh in threshs
         for wmax in Mweights
-            errM, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=wmax, wtype=1)
+            errM, _, dbfEs, nterms, loss, groundE = run(U=U, threshold=thresh, wmax=wmax, wtype=1)
             push!(absolute_errors_Majorana, errM)
             push!(dbfEs_list, dbfEs)
             push!(nterms_list, nterms)
