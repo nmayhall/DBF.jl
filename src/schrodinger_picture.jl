@@ -235,7 +235,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
     end
     
     time = @elapsed x, info = KrylovKit.linsolve(Amap, bvec, xguess,
-                                            verbosity   = 4,
+                                            verbosity   = verbose,
                                             maxiter     = 10,
                                             issymmetric = true,
                                             ishermitian = true,
@@ -243,7 +243,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
 
     e = e0 + x' * bvec
 
-    @printf(" E0 = %12.8f E(cepa) = %12.8f time: %12.8f\n", e0, e, time)
+    @printf(" E0 = %12.8f E(cepa) = %12.8f dim: %8i\n", e0, e, length(basis))
     return e0, e, x, basis
 end
 
@@ -271,7 +271,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing,
     end
     Hmap = LinearMap(H, basis)
     time = @elapsed e, v, info = KrylovKit.eigsolve(Hmap, vguess, 1, :SR,
-                                                verbosity   = 3,
+                                                verbosity   = verbose,
                                                 maxiter     = 10,
                                                 issymmetric = true,
                                                 ishermitian = true,
@@ -279,7 +279,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing,
                                                 tol         = tol)
 
     # @show size(v[1]), info
-    @printf(" E0 = %12.8f E(var)  = %12.8f time: %12.8f\n", e0, e[1], time)
+    @printf(" E0 = %12.8f E(var)  = %12.8f dim: %8i\n", e0, e[1], length(basis))
     return e0, e, v, basis
 end
 

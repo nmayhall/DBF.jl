@@ -399,3 +399,226 @@ function commute_with_Zs(O::PauliSum{N}) where N
     end
     return out_tot
 end
+
+
+
+"""
+    dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
+    max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
+    evolve_coeff_thresh=1e-12) where {N,T}
+
+d/dt H = [H,[H,P]]
+
+where P = |000...><000...| = equal sum of all diagonal paulis
+"""
+function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N}; 
+            n_body = 2,
+            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
+            evolve_coeff_thresh=1e-12,
+            evolve_weight_thresh=nothing,
+            grad_coeff_thresh=1e-8,
+            grad_weight_thresh=nothing,
+            stepsize = .01) where {N,T}
+        
+    if grad_weight_thresh === nothing
+        grad_weight_thresh = N
+    end
+    if evolve_weight_thresh === nothing
+        evolve_weight_thresh = N
+    end
+
+    O = deepcopy(Oin)
+    generators = Vector{PauliBasis{N}}([])
+    angles = Vector{Float64}([])
+    norm_old = norm(offdiag(O))
+
+    ecurr = expectation_value(O, ψ) 
+    accumulated_error = 0
+   
+    # Define the source operator that is an n-body approximation to |00><00|
+    S = create_0_projector(N,n_body)
+    @printf(" Number of terms in approx projector: %i\n", length(S))
+    
+    verbose < 1 || @printf(" %6s", "Iter")
+    verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
+    verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
+    verbose < 1 || @printf(" %12s", "total_error")
+    verbose < 1 || @printf(" %12s", "E(2)")
+    verbose < 1 || @printf(" %12s", "|H|")
+    verbose < 1 || @printf(" %8s", "#PoolOps")
+    verbose < 1 || @printf(" %4s", "#Rot")
+    verbose < 1 || @printf(" %8s", "len(H)")
+    verbose < 1 || @printf(" %12s", "variance")
+    verbose < 1 || @printf(" %12s", "Sh Entropy")
+    verbose < 1 || @printf("\n")
+
+    for iter in 1:max_iter
+        
+       
+        # Create the iteration dependent pool
+        # pool = max_of_commutator2(S, O, n_top=search_n_top)
+        pool = S*O - O*S
+        # pool = commute_with_Zs(O)
+        coeff_clip!(pool, thresh=grad_coeff_thresh)
+        # weight_clip!(pool, grad_weight_thresh)
+        # pool = find_top_k(pool, search_n_top)
+       
+        if length(pool) == 0
+            @warn " No search direction found. Increase `n_top` or decrease `clip`"
+            break
+        end
+
+        grad_vec = Vector{Float64}([])
+        grad_ops = Vector{PauliBasis{N}}([])
+       
+        # # @show norm(pool), norm(pool*O - O*pool)
+        # # Compute gradient vector
+        for (p,c) in pool
+            # dyad = (ψ * ψ') * p'
+            # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
+            # ci, σ = p*ψ
+            # gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
+            # # @show expectation_value(O*p*c - c*p*O, ψ)
+            # if abs(gi) > grad_coeff_thresh
+                push!(grad_vec, -imag(c))
+                push!(grad_ops, p)
+            # end
+        end
+        # for (p,c) in O*pool - pool*O
+        #     @show p,c
+        # end
+       
+        # @show length(pool), norm(grad_vec)
+        # n_pool = length(grad_vec)
+        
+        
+        norm_new = norm(grad_vec)
+        
+        sorted_idx = reverse(sortperm(abs.(grad_vec)))
+
+        verbose < 2 || @printf("     %8s %12s %12s", "pool idx", "||O||", "<ψ|H|ψ>")
+        verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
+        verbose < 2 || @printf("\n")
+        n_rots = 0
+        for i in sorted_idx
+            
+            gi = grad_ops[i]
+            θi = grad_vec[i]
+            # θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
+           
+            # #
+            # # make sure energy lowering is large enough to warrent evolving
+            # costi(0) - costi(θi) > grad_coeff_thresh || continue
+
+            # n_rots < search_n_top || break 
+            #See if we can do a cheap clifford operation
+            # if costi(0) - costi(π/2) > evolve_coeff_thresh 
+            #     θi = π/2
+            #     @warn "clifford", costi(0) - costi(π/2)
+            # end 
+          
+            
+
+            O = evolve(O,gi,θi*stepsize)
+            e1 = expectation_value(O,ψ)
+            coeff_clip!(O, thresh=evolve_coeff_thresh)
+            weight_clip!(O, evolve_weight_thresh)
+            e2 = expectation_value(O,ψ)
+
+            accumulated_error += e2 - e1
+            # if norm_new - costi(θi) > 1e-12
+            #     @show norm_new - costi(θi)
+            #     throw(ErrorException)
+            # end
+            # norm_new = costi(θi)/O_norm
+            ecurr = expectation_value(O, ψ) 
+            verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
+            verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
+            verbose < 2 || @printf("\n")
+            push!(generators, gi)
+            push!(angles, θi)
+            n_rots += 1
+            flush(stdout)
+        end
+        verbose < 2 || println("\n Compute PT2 correction")
+        e0, e2 = pt2(O, ψ)
+        verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
+        
+        var_curr = variance(O,ψ)
+        verbose < 1 || @printf("*%6i", iter)
+        verbose < 1 || @printf(" %12.8f", ecurr)
+        verbose < 1 || @printf(" %12.8f", norm_new)
+        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", real(e2))
+        verbose < 1 || @printf(" %12.8f", norm(O))
+        verbose < 1 || @printf(" %8i", length(pool))
+        verbose < 1 || @printf(" %4i", n_rots)
+        verbose < 1 || @printf(" %8i", length(O))
+        verbose < 1 || @printf(" %12.8f", real(var_curr))
+        verbose < 1 || @printf(" %12.8f", entropy(O))
+        verbose < 1 || @printf("\n")
+        
+        if norm_new < conv_thresh
+            verbose < 1 || @printf(" Converged.\n")
+            break
+        end
+
+       
+        if iter == max_iter
+            verbose < 1 || @printf(" Not Converged.\n")
+        end
+        
+        if n_rots == 0
+            @warn """ No search directions found. 
+                    Tighten `grad_coeff_thresh` or expand pool"""
+            break
+        end
+        
+        norm_old = norm_new
+    end
+    return O, generators, angles
+end
+
+function create_0_projector(N, n_body)
+    S = PauliSum(N)
+    S += Pauli(N)
+    for i in 1:N
+        S += Pauli(N, Z=[i])
+        # S += Pauli(N, X=[i])
+
+        n_body > 1 || continue
+
+        for j in i+1:N
+            S += Pauli(N, Z=[i, j])
+
+            n_body > 2 || continue
+
+            for k in j+1:N
+                S += Pauli(N, Z=[i, j, k])
+
+                n_body > 3 || continue
+
+                for l in k+1:N
+                    S += Pauli(N, Z=[i, j, k, l])
+                
+                    n_body > 4 || continue
+
+                    for m in l+1:N
+                        S += Pauli(N, Z=[i, j, k, l, m])
+                        
+                        n_body > 5 || continue
+
+                        for n in m+1:N
+                            S += Pauli(N, Z=[i, j, k, l, m, n])
+                        end
+                    end
+                end
+            end
+        end
+    end
+    # The real approx projector would have a factor of 2^-N, but we'll ignore that constant
+    # which basically amounts to a scaled up stepsize when integrating. 
+    # S = S * (1/2^N)
+    
+    return S
+end

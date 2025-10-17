@@ -345,3 +345,19 @@ println("Number of terms in Hubbard 1D Hamiltonian: ", length(H))
 H = fermi_hubbard_2D(1, 2, 5.0, 2.0)
 display(H)
 println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
+
+function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0)
+    # All spins coupled through site 1
+    H = PauliSum(N, Float64)
+    for i in 2:N
+        H += -2*Jx * Pauli(N, X=[1,i])
+        H += -2*Jy * Pauli(N, Y=[1,i])
+        H += -2*Jz * Pauli(N, Z=[1,i])
+    end 
+    for i in 1:N
+        H += x * Pauli(N, X=[i])
+        H += y * Pauli(N, Y=[i])
+        H += z * Pauli(N, Z=[i])
+    end 
+    return H
+end
