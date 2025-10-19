@@ -247,7 +247,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
     return e0, e, x, basis
 end
 
-function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6) where N
+function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6, max_iter=10) where N
 
     ref_basis = [ref]
     vref = KetSum(ref_basis)
@@ -272,7 +272,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing,
     Hmap = LinearMap(H, basis)
     time = @elapsed e, v, info = KrylovKit.eigsolve(Hmap, vguess, 1, :SR,
                                                 verbosity   = verbose,
-                                                maxiter     = 10,
+                                                maxiter     = max_iter,
                                                 issymmetric = true,
                                                 ishermitian = true,
                                                 eager       = true,

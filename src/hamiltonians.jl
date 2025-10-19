@@ -1,4 +1,5 @@
 using PauliOperators
+using Random
 
 function heisenberg_1D(N, Jx, Jy, Jz; x=0, y=0, z=0)
     H = PauliSum(N, Float64)
@@ -361,3 +362,47 @@ function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0)
     end 
     return H
 end
+
+function heisenberg_sparse(N, Jx, Jy, Jz, sparsity; x=0, y=0, z=0, seed=1)
+    # All spins coupled through site 1
+    Random.seed!(seed)
+    H = PauliSum(N, Float64)
+    for i in 1:N
+        for j in i+1:N
+            rand() < sparsity || continue
+            H += -2*Jx * Pauli(N, X=[i,j])
+            H += -2*Jy * Pauli(N, Y=[i,j])
+            H += -2*Jz * Pauli(N, Z=[i,j])
+        end 
+    end 
+    for i in 1:N
+        rand() < sparsity || continue
+        H += x * Pauli(N, X=[i])
+        H += y * Pauli(N, Y=[i])
+        H += z * Pauli(N, Z=[i])
+    end 
+    return H
+end
+
+function graph_laplacian(O::PauliSum{N,T}) where {N,T}
+    A = zeros(Float64, N, N)
+    for (p,c) in O
+        on = PauliOperators.get_on_bits(p.z|p.x)
+        # @show string(p)
+        # display(on)
+        for i in 1:length(on)
+            for j in i+1:length(on)
+                ii = on[i]
+                jj = on[j]
+                A[ii,jj] += abs(c)
+                A[jj,ii] += abs(c)
+            end
+        end
+    end
+   
+    L = -1*A
+    for i in 1:N
+        L[i,i] = sum(A[:,i])
+    end
+    return L 
+end 
