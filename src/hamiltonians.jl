@@ -347,7 +347,7 @@ end
 # display(H)
 # println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
 
-function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0, α=1, seed=1)
+function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0, α=0, seed=1)
     # All spins coupled through site 1
     H = PauliSum(N, Float64)
     Random.seed!(seed)
