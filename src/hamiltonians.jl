@@ -337,23 +337,25 @@ function fermi_hubbard_2D_zigzag(Lx::Int, Ly::Int, t::Float64, U::Float64)
     return H
 end
 
-# Test Hubbard 1D
-H = hubbard_model_1D(2, 5.0, 2.0)
-display(H)
-println("Number of terms in Hubbard 1D Hamiltonian: ", length(H))
+# # Test Hubbard 1D
+# H = hubbard_model_1D(2, 5.0, 2.0)
+# display(H)
+# println("Number of terms in Hubbard 1D Hamiltonian: ", length(H))
 
-# Test Hubbard 2D
-H = fermi_hubbard_2D(1, 2, 5.0, 2.0)
-display(H)
-println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
+# # Test Hubbard 2D
+# H = fermi_hubbard_2D(1, 2, 5.0, 2.0)
+# display(H)
+# println("Number of terms in Hubbard 2x1 Hamiltonian: ", length(H))
 
-function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0)
+function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0, α=1, seed=1)
     # All spins coupled through site 1
     H = PauliSum(N, Float64)
+    Random.seed!(seed)
     for i in 2:N
-        H += -2*Jx * Pauli(N, X=[1,i])
-        H += -2*Jy * Pauli(N, Y=[1,i])
-        H += -2*Jz * Pauli(N, Z=[1,i])
+        ϵ = randn() * α
+        H += (-2*Jx + ϵ) * Pauli(N, X=[1,i]) 
+        H += (-2*Jy + ϵ) * Pauli(N, Y=[1,i]) 
+        H += (-2*Jz + ϵ) * Pauli(N, Z=[1,i]) 
     end 
     for i in 1:N
         H += x * Pauli(N, X=[i])
@@ -363,16 +365,17 @@ function heisenberg_central_spin(N, Jx, Jy, Jz; x=0, y=0, z=0)
     return H
 end
 
-function heisenberg_sparse(N, Jx, Jy, Jz, sparsity; x=0, y=0, z=0, seed=1)
+function heisenberg_sparse(N, Jx, Jy, Jz, sparsity; x=0, y=0, z=0, seed=1, α=1)
     # All spins coupled through site 1
     Random.seed!(seed)
     H = PauliSum(N, Float64)
     for i in 1:N
         for j in i+1:N
             rand() < sparsity || continue
-            H += -2*Jx * Pauli(N, X=[i,j])
-            H += -2*Jy * Pauli(N, Y=[i,j])
-            H += -2*Jz * Pauli(N, Z=[i,j])
+            coupling = randn() * α
+            H += -2*Jx * Pauli(N, X=[i,j]) * coupling 
+            H += -2*Jy * Pauli(N, Y=[i,j]) * coupling
+            H += -2*Jz * Pauli(N, Z=[i,j]) * coupling
         end 
     end 
     for i in 1:N
@@ -385,6 +388,16 @@ function heisenberg_sparse(N, Jx, Jy, Jz, sparsity; x=0, y=0, z=0, seed=1)
 end
 
 function graph_laplacian(O::PauliSum{N,T}) where {N,T}
+    A = graph_adjacency(O) 
+    
+    L = -1*A
+    for i in 1:N
+        L[i,i] = sum(A[:,i])
+    end
+    return L 
+end 
+
+function graph_adjacency(O::PauliSum{N,T}) where {N,T}
     A = zeros(Float64, N, N)
     for (p,c) in O
         on = PauliOperators.get_on_bits(p.z|p.x)
@@ -399,10 +412,6 @@ function graph_laplacian(O::PauliSum{N,T}) where {N,T}
             end
         end
     end
-   
-    L = -1*A
-    for i in 1:N
-        L[i,i] = sum(A[:,i])
-    end
-    return L 
+    
+    return A 
 end 
