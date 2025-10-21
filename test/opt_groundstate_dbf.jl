@@ -47,7 +47,7 @@ function run()
                                 # evolve_weight_thresh=5,
                                 grad_coeff_thresh=1e-3,
                                 # grad_weight_thresh=2,
-                                search_n_top=100)
+                                energy_lowering_thresh=1e-3)
     # @show DBF.get_weight_counts(H)
     # @show DBF.get_weight_probs(H)
     
@@ -58,7 +58,7 @@ function run()
                                 # evolve_weight_thresh=8,
                                 grad_coeff_thresh=1e-3,
                                 # grad_weight_thresh=3,
-                                search_n_top=200)
+                                energy_lowering_thresh=1e-4)
     g = vcat(g,g2)
     θ = vcat(θ,θ2)
     # @show DBF.get_weight_counts(H)

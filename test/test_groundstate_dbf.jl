@@ -27,11 +27,16 @@ using Test
     
     @show DBF.variance(H,ψ)
 
+    # H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=2,
+    #                 max_iter=20, conv_thresh=1e-3, 
+    #                 evolve_coeff_thresh=1e-6,
+    #                 grad_coeff_thresh=1e-10,
+    #                 search_n_top=100)
     H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=2,
                     max_iter=20, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-6,
                     grad_coeff_thresh=1e-10,
-                    search_n_top=100)
+                    energy_lowering_thresh=1e-10)
    
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
@@ -67,7 +72,7 @@ end
                     max_iter=20, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-6,
                     grad_coeff_thresh=1e-3,
-                    search_n_top=1000)
+                    energy_lowering_thresh=1e-3)
     
     # H = deepcopy(H0)
     # Compute PT2 explicitly with matrix

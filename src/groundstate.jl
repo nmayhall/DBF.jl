@@ -78,7 +78,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             evolve_weight_thresh=nothing,
             grad_coeff_thresh=1e-8,
             grad_weight_thresh=nothing,
-            search_n_top=1000) where {N,T}
+            energy_lowering_thresh=1e-3) where {N,T}
         
     if grad_weight_thresh === nothing
         grad_weight_thresh = N
@@ -118,7 +118,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         pool = commute_with_Zs(O)
         coeff_clip!(pool, thresh=grad_coeff_thresh)
         weight_clip!(pool, grad_weight_thresh)
-        pool = find_top_k(pool, search_n_top)
+        # pool = find_top_k(pool, search_n_top)
        
         if length(pool) == 0
             @warn " No search direction found. Increase `n_top` or decrease `clip`"
@@ -168,7 +168,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
            
             #
             # make sure energy lowering is large enough to warrent evolving
-            # costi(0) - costi(θi) > grad_coeff_thresh || continue
+            costi(0) - costi(θi) > energy_lowering_thresh || continue
 
             # n_rots < search_n_top || break 
             #See if we can do a cheap clifford operation
