@@ -61,115 +61,6 @@ function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; v
 end
 
 
-"""
-    dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
-    max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-    evolve_coeff_thresh=1e-12) where {N,T}
-
-TBW
-"""
-function dbf_groundstate_old(Oin::PauliSum{N,T}, ψ::Ket{N}; 
-            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-12,
-            evolve_weight_thresh=20,
-            search_n_top=100,
-            extra_diag=nothing) where {N,T}
-    O = deepcopy(Oin)
-    generators = Vector{PauliBasis}([])
-    angles = Vector{Float64}([])
-    norm_old = norm(offdiag(O))
-
-    G_old = Pauli(N)
-
-
-    verbose < 1 || @printf(" %6s %12s %12s", "Iter", "|O|", "<ψ|O|ψ>")
-    verbose < 1 || @printf(" %12s %12s %12s G\n", "norm(g)", "len(O)", "θ")
-    for iter in 1:max_iter
-        
-        S = diag(O)
-        
-        # add extra diagonal operators to help 
-        if extra_diag !== nothing
-            S += extra_diag
-        end
-        
-        # com = O*S - S*O
-        SO_OS = max_of_commutator2(S, O, n_top=search_n_top)
-        
-        if length(SO_OS) == 0
-            @warn " No search direction found. Increase `n_top` or decrease `clip`"
-            break
-        end
-
-        # coeff_clip!(O, thresh=evolve_coeff_thresh)
-        # com = O*com - com*O
-        # f(k) = expectation_value(k*O-O*k, ψ)
-        function f(k)
-            # <ψ| k*O - O*k |psi> = imag( tr(O|ψ><ψ|k)) 
-            dyad = (ψ * ψ') * k'
-            return 2*imag(expectation_value(O,dyad))
-        end
-        # G = argmax(k -> abs(f(k)), keys(SO_OS))
-        G = argmax(k -> abs(f(k) * SO_OS[k]), keys(SO_OS))
-        
-        # for k in keys(SO_OS)
-        #     # SO_OS[k] = abs(expectation_value(k*O-O*k, ψ)*SO_OS[k])
-        #     SO_OS[k] = abs(f(k)*SO_OS[k])
-        # end
-        
-        # G = argmax(k->abs(SO_OS[k]), keys(SO_OS))
-
-        norm_new = norm(SO_OS)
-        # G = argmax(k -> abs(com[k]), keys(com))
-
-        if G == G_old
-            println(" Trapped? ", string(G), " ", coeff)
-            θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=1)
-            # θi, costi = DBF.optimize_theta_expval(O, G, ψ, stepsize=.000001, verbose=1)
-            step = .1
-            for i in 0:.01:1
-                θ = i*step*2π
-                @printf(" θ=%12.8f cost=%12.8f\n", θ, costi(θ))
-            end
-            break
-        end
-        
-        # θi, costi = DBF.optimize_theta_expval(O, G, ψ, stepsize=.000001, verbose=0)
-        θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
-        O = evolve(O,G,θi)
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
-
-        # if norm_new - costi(θi) > 1e-12
-        #     @show norm_new - costi(θi)
-        #     throw(ErrorException)
-        # end
-        # norm_new = costi(θi)/O_norm
-        ecurr = expectation_value(O, ψ) 
-        verbose < 1 || @printf(" %6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
-        verbose < 1 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
-        verbose < 1 || @printf("\n")
-        push!(generators, G)
-        push!(angles, θi)
-
-        # if norm_new - norm_old < conv_thresh
-        if norm_new < conv_thresh
-            verbose < 1 || @printf(" Converged.\n")
-            break
-        end
-       
-        # if norm_new > norm_old
-        #     println(" Norm increased?")
-        #     throw(ErrorException)
-        # end
-        if iter == max_iter
-            verbose < 1 || @printf(" Not Converged.\n")
-        end
-        
-        norm_old = norm_new
-        G_old = G
-    end
-    return O, generators, angles
-end
 
 """
     dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
@@ -204,38 +95,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     ecurr = expectation_value(O, ψ) 
     accumulated_error = 0
    
-    # Define the source operator that is an n-body approximation to |00><00|
-    S = PauliSum(N)
-    for i in 1:N 
-        S += Pauli(N, Z=[i])
-        # S += Pauli(N, X=[i])
-
-        n_body > 1 || continue
-
-        for j in i+1:N 
-            S += Pauli(N, Z=[i,j])
-        
-            n_body > 2 || continue
-
-            for k in j+1:N 
-                S += Pauli(N, Z=[i,j,k])
-            
-                n_body > 3 || continue
-
-                for l in k+1:N 
-                    S += Pauli(N, Z=[i,j,k,l])
-                
-                    n_body == 4 || throw("NotYetImplemented") 
-                    # n_body > 3 || continue
-
-                end
-            end
-        end
-    end
-    # S = S * (1/length(S))
-    # display(S)
-    @show length(S)
-    
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
     verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
@@ -247,6 +106,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %8s", "len(H)")
     verbose < 1 || @printf(" %12s", "variance")
     verbose < 1 || @printf(" %12s", "Sh Entropy")
+    verbose < 1 || @printf(" %12s", "Time")
     verbose < 1 || @printf("\n")
 
     for iter in 1:max_iter
@@ -297,7 +157,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
-        for gi in sorted_idx
+        time = @elapsed for gi in sorted_idx
             
             G = grad_ops[gi]
             θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
@@ -355,6 +215,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %12.8f", real(var_curr))
         verbose < 1 || @printf(" %12.8f", entropy(O))
+        verbose < 1 || @printf(" %12.8f", time)
         verbose < 1 || @printf("\n")
         
         if norm_new < conv_thresh
