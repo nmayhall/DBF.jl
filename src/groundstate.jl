@@ -127,15 +127,18 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
         grad_vec = Vector{Float64}([])
         grad_ops = Vector{PauliBasis{N}}([])
-       
+      
+        xzO = pack_x_z(O)
+        σv = matvec(xzO, ψ)
+
         # @show norm(pool), norm(pool*O - O*pool)
         # Compute gradient vector
         for (p,c) in pool
             # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             ci, σ = p*ψ
-            abs(c*ci) > grad_coeff_thresh || continue
-            gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
+            gi = 2*real(get(σv, σ, T(0)) * c * ci)
+            # gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
             # @show expectation_value(O*p*c - c*p*O, ψ)
             if abs(gi) > grad_coeff_thresh
                 push!(grad_vec, gi)
@@ -165,7 +168,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
            
             #
             # make sure energy lowering is large enough to warrent evolving
-            costi(0) - costi(θi) > grad_coeff_thresh || continue
+            # costi(0) - costi(θi) > grad_coeff_thresh || continue
 
             # n_rots < search_n_top || break 
             #See if we can do a cheap clifford operation

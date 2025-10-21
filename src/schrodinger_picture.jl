@@ -40,6 +40,24 @@ function matvec(O::XZPauliSum, v::Dict{Ket{N}, T}) where {N,T}
     return s
 end
 
+function matvec(O::XZPauliSum{T}, vi::Ket{N}) where {N,T}
+    s = KetSum(N, T)
+    sizehint!(s, length(O)) 
+
+    for (x, zs) in O
+        b = Ket{N}(vi.v ⊻ x)
+        
+        val = get(s, b, T(0))
+        for (z, c) in zs
+            p = PauliBasis{N}(z,x)
+            ph,b = p*vi
+            val += ph * c
+        end
+        s[b] = val
+    end
+    return s
+end
+
 
 function subspace_matvec(O::XZPauliSum, v::KetSum{N,T}) where {N,T}
     s = deepcopy(v)
