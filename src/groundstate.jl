@@ -78,7 +78,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             evolve_weight_thresh=nothing,
             grad_coeff_thresh=1e-8,
             grad_weight_thresh=nothing,
-            energy_lowering_thresh=1e-3) where {N,T}
+            energy_lowering_thresh=1e-3,
+            max_rots_per_grad = 100) where {N,T}
         
     if grad_weight_thresh === nothing
         grad_weight_thresh = N
@@ -96,12 +97,12 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     accumulated_error = 0
    
     verbose < 1 || @printf(" %6s", "Iter")
-    verbose < 1 || @printf(" %12s", "<ψ|H|ψ>")
+    verbose < 1 || @printf(" %14s", "<ψ|H|ψ>")
     verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
     verbose < 1 || @printf(" %12s", "total_error")
     verbose < 1 || @printf(" %12s", "E(2)")
     verbose < 1 || @printf(" %12s", "|H|")
-    verbose < 1 || @printf(" %8s", "#PoolOps")
+    verbose < 1 || @printf(" %8s", "len(G)")
     verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "len(H)")
     verbose < 1 || @printf(" %12s", "variance")
@@ -150,8 +151,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         # end
        
         # @show length(pool), norm(grad_vec)
-        n_pool = length(grad_vec)
-        
         
         norm_new = norm(grad_vec)
         
@@ -202,6 +201,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             push!(angles, θi)
             n_rots += 1
             flush(stdout)
+
+            if n_rots >= max_rots_per_grad
+                break
+            end
         end
         verbose < 2 || println("\n Compute PT2 correction")
         e0, e2 = pt2(O, ψ)
@@ -209,12 +212,12 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
         var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
-        verbose < 1 || @printf(" %12.8f", ecurr)
+        verbose < 1 || @printf(" %14.8f", ecurr)
         verbose < 1 || @printf(" %12.4f", norm_new)
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
         verbose < 1 || @printf(" %12.8f", real(e2))
         verbose < 1 || @printf(" %12.4f", norm(O))
-        verbose < 1 || @printf(" %8i", length(pool))
+        verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %4i", n_rots)
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %12.4f", real(var_curr))
@@ -227,14 +230,13 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             break
         end
 
-       
         if iter == max_iter
             verbose < 1 || @printf(" Not Converged.\n")
         end
         
         if n_rots == 0
             @warn """ No search directions found. 
-                    Tighten `grad_coeff_thresh` or expand pool"""
+                    Tighten `grad_coeff_thresh` or `energy_lowering_thresh`"""
             break
         end
         
