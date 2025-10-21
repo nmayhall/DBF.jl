@@ -148,7 +148,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
 end
 
 function variance(O::PauliSum{N}, ψ::Ket{N}) where N
-    σ = KetSum(N)
+    σ = KetSum(N, T=ComplexF64)
     for (p,ci) in O
         cj, ki = p*ψ
         # σ[ki] += cj*ci
