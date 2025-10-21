@@ -60,6 +60,17 @@ using BenchmarkTools
     @test abs(DBF.expectation_value(H,k) - Vector(k)'*Matrix(H)*Vector(k)) < 1e-14
 
 
+    # 
+    
+    H = rand(PauliSum{N}, n_paulis=100)
+    H += H' 
+    Z = PauliSum(N)
+    for i in 1:N
+        Z += PauliBasis(Pauli(N, Z=[i]))
+    end
+    ref = Z*H - H*Z
+    tst = DBF.commute_with_Zs(H)
+    @test norm(ref + -1*tst) < 1e-14
 end
 
 # test()

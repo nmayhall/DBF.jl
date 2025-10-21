@@ -134,6 +134,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             ci, σ = p*ψ
+            abs(c*ci) > grad_coeff_thresh || continue
             gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
             # @show expectation_value(O*p*c - c*p*O, ψ)
             if abs(gi) > grad_coeff_thresh
