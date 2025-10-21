@@ -40,7 +40,7 @@ function run()
 
     @show norm(H)
     
-    @time H, g, θ = DBF.dbf_groundstate(H, ψ, n_body=1, 
+    @time H, g, θ = DBF.dbf_groundstate(H, ψ, 
                                 verbose=1, 
                                 max_iter=120, conv_thresh=1e-3, 
                                 evolve_coeff_thresh=1e-3,
@@ -52,7 +52,7 @@ function run()
     # @show DBF.get_weight_counts(H)
     # @show DBF.get_weight_probs(H)
     
-    @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, n_body=1,
+    @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, 
                                 verbose=1, 
                                 max_iter=120, conv_thresh=1e-3, 
                                 evolve_coeff_thresh=1e-3,

@@ -72,7 +72,8 @@ d/dt H = [H,[H,P]]
 where P = |000...><000...| = equal sum of all diagonal paulis
 """
 function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N}; 
-            n_body = 2,
+            initial_error = 0,
+            initial_norm_error = 0,
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
             evolve_weight_thresh=nothing,
@@ -91,32 +92,34 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     O = deepcopy(Oin)
     generators = Vector{PauliBasis{N}}([])
     angles = Vector{Float64}([])
-    norm_old = norm(offdiag(O))
 
     ecurr = expectation_value(O, ψ) 
-    accumulated_error = 0
+    accumulated_error = initial_error 
+    accumulated_norm_error = initial_norm_error 
    
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %14s", "<ψ|H|ψ>")
-    verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
     verbose < 1 || @printf(" %12s", "total_error")
-    verbose < 1 || @printf(" %12s", "E(2)")
-    verbose < 1 || @printf(" %12s", "|H|")
+    verbose < 1 || @printf(" %10s", "E(2)")
+    verbose < 1 || @printf(" %8s", "norm err")
+    verbose < 1 || @printf(" %8s", "norm(G)")
+    verbose < 1 || @printf(" %10s", "len([H,Z])")
     verbose < 1 || @printf(" %8s", "len(G)")
-    verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "len(H)")
-    verbose < 1 || @printf(" %12s", "variance")
-    verbose < 1 || @printf(" %12s", "Sh Entropy")
-    verbose < 1 || @printf(" %12s", "Time")
+    verbose < 1 || @printf(" %4s", "#Rot")
+    verbose < 1 || @printf(" %8s", "variance")
+    verbose < 1 || @printf(" %8s", "Entropy")
+    verbose < 1 || @printf(" %8s", "Time")
     verbose < 1 || @printf("\n")
 
     for iter in 1:max_iter
         
        
         # Create the iteration dependent pool
-        # pool = max_of_commutator2(S, O, n_top=search_n_top)
-        # pool = S*O - O*S
         pool = commute_with_Zs(O)
+
+        len_comm = length(pool)
+        verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
         coeff_clip!(pool, thresh=grad_coeff_thresh)
         weight_clip!(pool, grad_weight_thresh)
         # pool = find_top_k(pool, search_n_top)
@@ -152,7 +155,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
        
         # @show length(pool), norm(grad_vec)
         
-        norm_new = norm(grad_vec)
         
         sorted_idx = reverse(sortperm(abs.(grad_vec)))
 
@@ -181,18 +183,17 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             O = evolve(O,G,θi)
 
             e1 = expectation_value(O,ψ)
+            n1 = norm(O)
             #
             # Truncate operator
             coeff_clip!(O, thresh=evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
             e2 = expectation_value(O,ψ)
+            n2 = norm(O)
 
             accumulated_error += e2 - e1
-            # if norm_new - costi(θi) > 1e-12
-            #     @show norm_new - costi(θi)
-            #     throw(ErrorException)
-            # end
-            # norm_new = costi(θi)/O_norm
+            accumulated_norm_error += n2^2 - n1^2
+            
             ecurr = expectation_value(O, ψ) 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
@@ -213,19 +214,20 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
-        verbose < 1 || @printf(" %12.4f", norm_new)
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
-        verbose < 1 || @printf(" %12.8f", real(e2))
-        verbose < 1 || @printf(" %12.4f", norm(O))
-        verbose < 1 || @printf(" %8i", length(grad_vec))
-        verbose < 1 || @printf(" %4i", n_rots)
+        verbose < 1 || @printf(" %10.6f", real(e2))
+        verbose < 1 || @printf(" %8.1e", accumulated_norm_error)
+        verbose < 1 || @printf(" %8.1e", norm(grad_vec))
+        verbose < 1 || @printf(" %10.1e", len_comm)
+        verbose < 1 || @printf(" %8.1e", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
-        verbose < 1 || @printf(" %12.4f", real(var_curr))
-        verbose < 1 || @printf(" %12.4f", entropy(O))
-        verbose < 1 || @printf(" %12.6f", time)
+        verbose < 1 || @printf(" %4i", n_rots)
+        verbose < 1 || @printf(" %8.4f", real(var_curr))
+        verbose < 1 || @printf(" %8.4f", entropy(O))
+        verbose < 1 || @printf(" %8.2f", time)
         verbose < 1 || @printf("\n")
         
-        if norm_new < conv_thresh
+        if norm(grad_vec) < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
             break
         end
@@ -240,12 +242,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             break
         end
         
-        norm_old = norm_new
     end
     return O, generators, angles
 end
 
-function commute_with_Zs(O::PauliSum{N}) where N
+function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N
     out_tot = PauliSum(N)
    
     for i in 1:N
@@ -262,7 +263,9 @@ function commute_with_Zs(O::PauliSum{N}) where N
             curr = get(out, PauliBasis(zp), 0.0) 
             out[PauliBasis(zp)] = curr + 2*coeff(zp)*c
         end
+        coeff_clip!(out, thresh=thresh)
         sum!(out_tot, out)
+        coeff_clip!(out_tot, thresh=thresh)
     end
     return out_tot
 end
