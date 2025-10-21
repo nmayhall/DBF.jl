@@ -127,5 +127,5 @@ function combine_dicts_with(f, dicts::Vector{Dict{K,V}}) where {K,V}
     return result
 end
 
-# # Example: sum values for duplicate keys
-# combined = combine_dicts_with(+, dicts)
+# # 
+# function optimize_sequentially()
