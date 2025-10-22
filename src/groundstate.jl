@@ -1,3 +1,5 @@
+using JLD2
+
 """
     optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
 
@@ -80,8 +82,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             grad_coeff_thresh=1e-8,
             grad_weight_thresh=nothing,
             energy_lowering_thresh=1e-3,
-            max_rots_per_grad = 100) where {N,T}
-        
+            max_rots_per_grad = 100,
+            checkfile=nothing) where {N,T}
+       
+
     if grad_weight_thresh === nothing
         grad_weight_thresh = N
     end
@@ -96,6 +100,34 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     ecurr = expectation_value(O, ψ) 
     accumulated_error = initial_error 
     accumulated_norm_error = initial_norm_error 
+        
+    verbose < 2 || println("\n Compute PT2 correction")
+    e0, e2 = pt2(O, ψ)
+   
+    # 
+    # Initialize data collection
+    out = Dict()
+    out["energies"] = Vector{Float64}([])
+    out["accumulated_error"] = Vector{Float64}([])
+    out["norms"] = Vector{Float64}([])
+    out["generators"] = Vector{PauliBasis{N}}([])
+    out["angles"] = Vector{Float64}([])
+    
+    out["energies_per_grad"] = Vector{Float64}([])
+    out["accumulated_error_per_grad"] = Vector{Float64}([])
+    out["norms_per_grad"] = Vector{Float64}([])
+    out["pt2_per_grad"] = Vector{Float64}([])
+    out["variance_per_grad"] = Vector{Float64}([])
+    
+    push!(out["energies"], ecurr)
+    push!(out["accumulated_error"], initial_error)
+    push!(out["norms"], norm(O))
+    
+    push!(out["energies_per_grad"], ecurr)
+    push!(out["accumulated_error_per_grad"], initial_error)
+    push!(out["pt2_per_grad"], e2)
+    push!(out["variance_per_grad"], variance(O,ψ))
+    push!(out["norms_per_grad"], norm(O))
    
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %14s", "<ψ|H|ψ>")
@@ -135,7 +167,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         xzO = pack_x_z(O)
         σv = matvec(xzO, ψ)
 
-        # @show norm(pool), norm(pool*O - O*pool)
         # Compute gradient vector
         for (p,c) in pool
             # dyad = (ψ * ψ') * p'
@@ -149,11 +180,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
                 push!(grad_ops, p)
             end
         end
-        # for (p,c) in O*pool - pool*O
-        #     @show p,c
-        # end
-       
-        # @show length(pool), norm(grad_vec)
         
         
         sorted_idx = reverse(sortperm(abs.(grad_vec)))
@@ -171,14 +197,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             # make sure energy lowering is large enough to warrent evolving
             costi(0) - costi(θi) > energy_lowering_thresh || continue
 
-            # n_rots < search_n_top || break 
-            #See if we can do a cheap clifford operation
-            # if costi(0) - costi(π/2) > evolve_coeff_thresh 
-            #     θi = π/2
-            #     @warn "clifford", costi(0) - costi(π/2)
-            # end 
-          
-            
 
             O = evolve(O,G,θi)
 
@@ -194,12 +212,15 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             accumulated_error += e2 - e1
             accumulated_norm_error += n2^2 - n1^2
             
+            push!(out["accumulated_error"], real(accumulated_error))
+            push!(out["energies"], ecurr)
+            push!(out["norms"], n2)
+            push!(out["generators"], G) 
+            push!(out["angles"], θi)
             ecurr = expectation_value(O, ψ) 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
             verbose < 2 || @printf("\n")
-            push!(generators, G)
-            push!(angles, θi)
             n_rots += 1
             flush(stdout)
 
@@ -227,6 +248,17 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8.2f", time)
         verbose < 1 || @printf("\n")
         
+        push!(out["pt2_per_grad"], e2)
+        push!(out["accumulated_error_per_grad"], accumulated_error)
+        push!(out["energies_per_grad"], ecurr)
+        push!(out["variance_per_grad"], var_curr)
+        push!(out["norms_per_grad"], norm(O))
+
+        if checkfile !== nothing
+            @save "$(checkfile).jld2" O out
+        end
+    
+        
         if norm(grad_vec) < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
             break
@@ -243,7 +275,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
         
     end
-    return O, generators, angles
+    out["hamiltonian"] = O 
+    return out 
 end
 
 function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N

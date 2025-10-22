@@ -27,17 +27,16 @@ using Test
     
     @show DBF.variance(H,ψ)
 
-    # H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=2,
-    #                 max_iter=20, conv_thresh=1e-3, 
-    #                 evolve_coeff_thresh=1e-6,
-    #                 grad_coeff_thresh=1e-10,
-    #                 search_n_top=100)
-    H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=2,
+    res = DBF.dbf_groundstate(H, ψ,
                     max_iter=20, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-6,
                     grad_coeff_thresh=1e-10,
                     energy_lowering_thresh=1e-10)
-   
+  
+    H = res["hamiltonian"]
+    gi = res["generators"]
+    θi = res["angles"]
+
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
     # println(" New H:")
@@ -64,16 +63,16 @@ end
     @show norm(H)^2, norm(diag(H))^2, norm(offdiag(H))^2
     @show e_exact = minimum(real(eigvals(Matrix(H))))
     @show e_ref = expectation_value(H,ψ) 
-    # H, gi, θi = DBF.dbf_diag(H0,
-    #                 max_iter=20, conv_thresh=1e-3, 
-    #                 evolve_coeff_thresh=1e-6,
-    #                 search_n_top=1000)
-    H, gi, θi = DBF.dbf_groundstate(H, ψ, n_body=1,
+    res = DBF.dbf_groundstate(H, ψ, 
                     max_iter=20, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-6,
                     grad_coeff_thresh=1e-3,
                     energy_lowering_thresh=1e-3)
-    
+   
+    H = res["hamiltonian"]
+    gi = res["generators"]
+    θi = res["angles"]
+
     # H = deepcopy(H0)
     # Compute PT2 explicitly with matrix
     basis_dict = H*ψ

@@ -4,7 +4,7 @@ using Printf
 using Random
 using LinearAlgebra
 using Test
-
+using JLD2
 
 function run()
     N = 6 
@@ -40,10 +40,10 @@ function run()
 
     @show norm(H)
     
-    @time H, g, θ = DBF.dbf_groundstate(H, ψ, 
+    @time res = DBF.dbf_groundstate(H, ψ, 
                                 verbose=1, 
                                 max_iter=120, conv_thresh=1e-3, 
-                                evolve_coeff_thresh=1e-3,
+                                evolve_coeff_thresh=1e-4,
                                 # evolve_weight_thresh=5,
                                 grad_coeff_thresh=1e-3,
                                 # grad_weight_thresh=2,
@@ -51,32 +51,27 @@ function run()
                                max_rots_per_grad=50)
     # @show DBF.get_weight_counts(H)
     # @show DBF.get_weight_probs(H)
-    
-    @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, 
+   
+    g = res["generators"]
+    θ = res["angles"]
+    H = res["hamiltonian"]
+
+    display(res["accumulated_error"][end])
+    @time res = DBF.dbf_groundstate(H, ψ, 
                                 verbose=1, 
+                                initial_error = res["accumulated_error"][end],
                                 max_iter=120, conv_thresh=1e-3, 
-                                evolve_coeff_thresh=1e-3,
-                                # evolve_weight_thresh=8,
+                                evolve_coeff_thresh=1e-4,
                                 grad_coeff_thresh=1e-3,
-                                # grad_weight_thresh=3,
                                 energy_lowering_thresh=1e-4,
-                               max_rots_per_grad=50)
-    g = vcat(g,g2)
-    θ = vcat(θ,θ2)
-    # @show DBF.get_weight_counts(H)
-    # @show DBF.get_weight_probs(H)
-    # @time H, g2, θ2 = DBF.dbf_groundstate(H, ψ, n_body=1,
-    #                             verbose=1, 
-    #                             max_iter=120, conv_thresh=1e-3, 
-    #                             evolve_coeff_thresh=1e-3,
-    #                             # evolve_weight_thresh=8,
-    #                             grad_coeff_thresh=1e-3,
-    #                             search_n_top=10000)
-    # g = vcat(g,g2)
-    # θ = vcat(θ,θ2)
-    # # @show DBF.get_weight_counts(H)
-    # # @show DBF.get_weight_probs(H)
+                               max_rots_per_grad=50,
+                               checkfile="test"
+                               )
+    g = vcat(g, res["generators"])
+    θ = vcat(θ, res["angles"])
+    H = res["hamiltonian"]
     
+    # @save "test.jld2" res
 
     Ht = deepcopy(H0)
     err = 0
@@ -98,6 +93,8 @@ function run()
     @printf(" ecurr %12.8f err %12.8f %8i\n", ecurr, err, length(Ht))
 
 
+    @show length(res["energies"])
+    @show length(res["generators"])
 
     println("\n Now reroptimize with higher accuracy:")
     @show length(θ)
@@ -145,9 +142,6 @@ function run()
     e,v = eigen(Matrix(H0))
     v = v[:,1]
     
-    @show v'*Matrix(H0)*v
-    @show v'*Matrix(O0)*v
-
     # Build H in subspace
     # basis_dict = DBF.add_single_excitations(ψ)
    
@@ -162,7 +156,7 @@ function run()
         push!(basis, k)
     end
     H = Matrix(Ht,basis)
-    display(eigvals(H)) 
+    display(eigvals(H)[1:10]) 
     display(basis[1])
     v = H[1,2:end]
     d = e0 .- diag(H)[2:end]
