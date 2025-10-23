@@ -103,29 +103,18 @@ end
     
     ψ = Ket{N}(Int128(0))
     @show ψ
-
-    @time H, g, θ = DBF.dbf_groundstate(H, ψ,
-                                n_body=1,
-                                max_iter=120,
-                                conv_thresh=1e-3,
-                                evolve_coeff_thresh=1e-4,
-                                evolve_weight_thresh=49,
-                                grad_coeff_thresh=1e-3,
-                                search_n_top=100)
-    # @time H, g, θ = DBF.dbf_diag(H, 
-    #                             max_iter=120,
-    #                             conv_thresh=1e-3,
-    #                             evolve_coeff_thresh=1e-3,
-    #                             search_n_top=10)
-    n1 = norm(H)^2
-    for (i,(c,p)) in enumerate(zip(DBF.get_weight_counts(H), DBF.get_weight_probs(H)))
-        @printf(" Weight: %4i %12i %12.8f\n", i, c, p/n1)
+    H = rand(PauliSum{8}, n_paulis=1000)
+    for i in 1:1000 
+        k = rand(PauliBasis{N})
+        H -= rand()*PauliBasis{N}(k.z, Int128(0))
     end
+    H = H + H'
+    Hmat = Matrix(H)
        
     basis = collect(keys(rand(KetSum{N}, n_terms=23)))
     Hmap = LinearMap(DBF.pack_x_z(H), basis)
     Hmat = Matrix(H)
-    Hmatss = zeros(length(basis), length(basis)) 
+    Hmatss = zeros(ComplexF64, length(basis), length(basis)) 
     idx = PauliOperators.index
     for (i,keti) in enumerate(basis)
         for (j,ketj) in enumerate(basis)
@@ -149,6 +138,44 @@ end
 
     # eexact,_ = eigvals(Matrix(H))
     # @printf(" Exact: %12.8f\n", eexact[1])
+
+
+    #####################################
+    # Test PT2
+    @show e0 = expectation_value(H,ψ)
+    v = Hmat[1,2:end]
+    d = e0 .- diag(Hmat)[2:end]
+    d = 1 ./ d
+    @show e2ref = v' * (d .* v)
+
+    println("\n Compute PT2 correction")
+    e0, e2 = DBF.pt2(H, ψ)
+    @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
+    @test abs(e2 - e2ref) < 1e-12
+
+    #####################################
+    # Test CEPA 
+    @show e0 = expectation_value(H,ψ)
+    vref = KetSum([ψ])
+    vref[ψ] = 1
+    b = DBF.matvec(pack_x_z(H), vref)
+    # coeff_clip!(b, thresh=1e-4)
+    delete!(b, ψ)
+    basis = collect(keys(b))
+    Hmat = Matrix(H,basis)
+    bv = Vector(b,basis)
+    nx = length(b)
+    @show size(Hmat), size(v)
+    A = e0*Matrix(I,nx,nx) - Hmat
+    @show e2ref = bv' * (pinv(A)* bv)
+
+    println("\n Compute CEPA correction")
+    e0, ecepa, x, basis = DBF.cepa(H, ψ, thresh=1e-4, tol=1e-12)
+    @show ecepa
+    # fill!(x0, x, basis)
+    @show ecepa-e0
+    @test abs(ecepa-e0 - e2ref) < 1e-12
+    return 
 
     e0, e, v, basis = DBF.fois_ci(H, ψ, thresh=1e-2, tol=1e-5)
     # @test abs(e[1] - -58.34688027) < 1e-6

@@ -444,9 +444,9 @@ then 'z'.
 """
 function pack_x_z(H::PauliSum{N,T}) where {N,T}
     # Build [X][Z] container
-    h = Dict{Int128,Vector{Tuple{Int128,Float64}}}()
+    h = Dict{Int128,Vector{Tuple{Int128,T}}}()
     for (p,c) in H
-        dx = get(h, p.x, Vector{Tuple{Int128,Float64}}())
+        dx = get(h, p.x, Vector{Tuple{Int128,T}}())
         push!(dx, (p.z,c))
         h[p.x] = dx
     end

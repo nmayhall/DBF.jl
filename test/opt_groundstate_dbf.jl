@@ -7,7 +7,7 @@ using Test
 using JLD2
 
 function run()
-    N = 6 
+    N = 10 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, -1, -1, -1, x=.1)
     # H = DBF.heisenberg_2D(2, 2, -1, -1, -1, z=.1)
@@ -44,29 +44,11 @@ function run()
                                 verbose=1, 
                                 max_iter=120, conv_thresh=1e-3, 
                                 evolve_coeff_thresh=1e-4,
-                                # evolve_weight_thresh=5,
-                                grad_coeff_thresh=1e-3,
-                                # grad_weight_thresh=2,
-                                energy_lowering_thresh=1e-3,
-                               max_rots_per_grad=50)
-    # @show DBF.get_weight_counts(H)
-    # @show DBF.get_weight_probs(H)
-   
-    g = res["generators"]
-    θ = res["angles"]
-    H = res["hamiltonian"]
-
-    display(res["accumulated_error"][end])
-    @time res = DBF.dbf_groundstate(H, ψ, 
-                                verbose=1, 
-                                initial_error = res["accumulated_error"][end],
-                                max_iter=120, conv_thresh=1e-3, 
-                                evolve_coeff_thresh=1e-4,
-                                grad_coeff_thresh=1e-3,
-                                energy_lowering_thresh=1e-4,
-                               max_rots_per_grad=50,
-                               checkfile="test"
-                               )
+                                grad_coeff_thresh=1e-5,
+                                energy_lowering_thresh=1e-5,
+                                clifford_check=true,
+                                compute_pt2_error=true,
+                                max_rots_per_grad=50)
     g = vcat(g, res["generators"])
     θ = vcat(θ, res["angles"])
     H = res["hamiltonian"]

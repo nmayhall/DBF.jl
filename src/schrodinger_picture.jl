@@ -20,7 +20,8 @@ using KrylovKit
 # end
 
 
-function matvec(O::XZPauliSum, v::Dict{Ket{N}, T}) where {N,T}
+function matvec(O::XZPauliSum{T1}, v::Dict{Ket{N}, T2}) where {N,T1,T2}
+    T = promote_type(T1,T2)
     s = KetSum(N, T)
     sizehint!(s, length(O)) 
 
@@ -261,7 +262,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
 
     e = e0 + x' * bvec
 
-    @printf(" E0 = %12.8f E(cepa) = %12.8f dim: %8i\n", e0, e, length(basis))
+    @printf(" E0 = %12.8f E(cepa) = %12.8f dim: %8i\n", e0, real(e), length(basis))
     return e0, e, x, basis
 end
 
@@ -312,6 +313,7 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
     e0 = expectation_value(Hd,ψ)
 
     h = pack_x_z(H)
+    hd = pack_x_z(Hd)
     def = Vector{Tuple{Int128, Float64}}()
 
     for (x,dx) in h
@@ -328,7 +330,7 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
             czx, σ = pzx * ψ
             σHψ += czx * c 
         end
-        e2 +=  abs2(σHψ) / (e0 - expectation_value(Hd, σ))
+        e2 +=  abs2(σHψ) / (e0 - expectation_value(hd, σ))
         # c2,k2 = p*k
         
         # k2 != k || error(" k==k2")

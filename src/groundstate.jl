@@ -83,6 +83,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             grad_weight_thresh=nothing,
             energy_lowering_thresh=1e-3,
             max_rots_per_grad = 100,
+            clifford_check = false,
+            compute_pt2_error = false,
             checkfile=nothing) where {N,T}
        
 
@@ -99,6 +101,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
     ecurr = expectation_value(O, ψ) 
     accumulated_error = initial_error 
+    accumulated_pt2_error = 0 
     accumulated_norm_error = initial_norm_error 
         
     verbose < 2 || println("\n Compute PT2 correction")
@@ -132,8 +135,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %14s", "<ψ|H|ψ>")
     verbose < 1 || @printf(" %12s", "total_error")
+    if compute_pt2_error
+        verbose < 1 || @printf(" %12s", "PT_error")
+    end
     verbose < 1 || @printf(" %10s", "E(2)")
-    verbose < 1 || @printf(" %8s", "norm err")
+    verbose < 1 || @printf(" %8s", "norm_err")
     verbose < 1 || @printf(" %8s", "norm(G)")
     verbose < 1 || @printf(" %10s", "len([H,Z])")
     verbose < 1 || @printf(" %8s", "len(G)")
@@ -192,7 +198,15 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             
             G = grad_ops[gi]
             θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
-           
+         
+            if clifford_check
+                # See if we can do a cheap clifford operation
+                if costi(0) - costi(π / 2) > energy_lowering_thresh
+                    θi = π / 2
+                    println("clifford:", string(G))
+                end
+            end
+
             #
             # make sure energy lowering is large enough to warrent evolving
             costi(0) - costi(θi) > energy_lowering_thresh || continue
@@ -202,14 +216,24 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
             e1 = expectation_value(O,ψ)
             n1 = norm(O)
+            pt2_1 = 0
+            pt2_2 = 0
+            if compute_pt2_error
+                _, pt2_1 = pt2(O, ψ)
+            end
+            
             #
             # Truncate operator
             coeff_clip!(O, thresh=evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
             e2 = expectation_value(O,ψ)
             n2 = norm(O)
+            if compute_pt2_error
+                _, pt2_2 = pt2(O, ψ)
+            end
 
             accumulated_error += e2 - e1
+            accumulated_pt2_error += pt2_2 - pt2_1
             accumulated_norm_error += n2^2 - n1^2
             
             push!(out["accumulated_error"], real(accumulated_error))
@@ -236,6 +260,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        if compute_pt2_error
+            verbose < 1 || @printf(" %12.8f", real(accumulated_pt2_error))
+        end
         verbose < 1 || @printf(" %10.6f", real(e2))
         verbose < 1 || @printf(" %8.1e", accumulated_norm_error)
         verbose < 1 || @printf(" %8.1e", norm(grad_vec))
