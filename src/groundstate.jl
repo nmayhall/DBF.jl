@@ -76,7 +76,7 @@ where P = |000...><000...| = equal sum of all diagonal paulis
 function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N}; 
             initial_error = 0,
             initial_norm_error = 0,
-            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
+            max_iter=10, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
             evolve_weight_thresh=nothing,
             grad_coeff_thresh=1e-8,
@@ -236,17 +236,18 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             accumulated_pt2_error += pt2_2 - pt2_1
             accumulated_norm_error += n2^2 - n1^2
             
-            push!(out["accumulated_error"], real(accumulated_error))
-            push!(out["energies"], ecurr)
-            push!(out["norms"], n2)
-            push!(out["generators"], G) 
-            push!(out["angles"], θi)
             ecurr = expectation_value(O, ψ) 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
             verbose < 2 || @printf("\n")
             n_rots += 1
             flush(stdout)
+            
+            push!(out["accumulated_error"], real(accumulated_error))
+            push!(out["energies"], ecurr)
+            push!(out["norms"], n2)
+            push!(out["generators"], G) 
+            push!(out["angles"], θi)
 
             if n_rots >= max_rots_per_grad
                 break
