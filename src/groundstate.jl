@@ -84,6 +84,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             energy_lowering_thresh=1e-3,
             max_rots_per_grad = 100,
             clifford_check = false,
+            compute_var_error = true,
             compute_pt2_error = false,
             checkfile=nothing) where {N,T}
        
@@ -102,6 +103,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     ecurr = expectation_value(O, ψ) 
     accumulated_error = initial_error 
     accumulated_pt2_error = 0 
+    accumulated_var_error = 0 
     accumulated_norm_error = initial_norm_error 
         
     verbose < 2 || println("\n Compute PT2 correction")
@@ -110,8 +112,14 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     # 
     # Initialize data collection
     out = Dict()
+
+    out["state"] = ψ
+    out["H0"] = Oin
+
     out["energies"] = Vector{Float64}([])
+    out["variances"] = Vector{Float64}([])
     out["accumulated_error"] = Vector{Float64}([])
+    out["accumulated_var_error"] = Vector{Float64}([])
     out["norms"] = Vector{Float64}([])
     out["generators"] = Vector{PauliBasis{N}}([])
     out["angles"] = Vector{Float64}([])
@@ -123,7 +131,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     out["variance_per_grad"] = Vector{Float64}([])
     
     push!(out["energies"], ecurr)
+    push!(out["variances"], ecurr)
     push!(out["accumulated_error"], initial_error)
+    push!(out["accumulated_var_error"], initial_error)
     push!(out["norms"], norm(O))
     
     push!(out["energies_per_grad"], ecurr)
@@ -146,6 +156,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %8s", "len(H)")
     verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "variance")
+    if compute_var_error
+        verbose < 1 || @printf(" %12s", "var_error")
+    end
     verbose < 1 || @printf(" %8s", "Entropy")
     verbose < 1 || @printf(" %8s", "Time")
     verbose < 1 || @printf("\n")
@@ -215,6 +228,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             O = evolve(O,G,θi)
 
             e1 = expectation_value(O,ψ)
+            v1 = variance(O,ψ)
             n1 = norm(O)
             pt2_1 = 0
             pt2_2 = 0
@@ -227,6 +241,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             coeff_clip!(O, thresh=evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
             e2 = expectation_value(O,ψ)
+            v2 = variance(O,ψ)
             n2 = norm(O)
             if compute_pt2_error
                 _, pt2_2 = pt2(O, ψ)
@@ -234,6 +249,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
             accumulated_error += e2 - e1
             accumulated_pt2_error += pt2_2 - pt2_1
+            accumulated_var_error += v2 - v1
             accumulated_norm_error += n2^2 - n1^2
             
             ecurr = expectation_value(O, ψ) 
@@ -244,6 +260,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             flush(stdout)
             
             push!(out["accumulated_error"], real(accumulated_error))
+            push!(out["accumulated_var_error"], real(accumulated_var_error))
             push!(out["energies"], ecurr)
             push!(out["norms"], n2)
             push!(out["generators"], G) 
@@ -272,6 +289,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %4i", n_rots)
         verbose < 1 || @printf(" %8.4f", real(var_curr))
+        if compute_var_error
+            verbose < 1 || @printf(" %12.8f", real(accumulated_var_error))
+        end
         verbose < 1 || @printf(" %8.4f", entropy(O))
         verbose < 1 || @printf(" %8.2f", time)
         verbose < 1 || @printf("\n")
