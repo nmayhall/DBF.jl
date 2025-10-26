@@ -115,7 +115,6 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
     out["state"] = ψ
     out["H0"] = Oin
-
     out["energies"] = Vector{Float64}([])
     out["variances"] = Vector{Float64}([])
     out["accumulated_error"] = Vector{Float64}([])
@@ -131,7 +130,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     out["variance_per_grad"] = Vector{Float64}([])
     
     push!(out["energies"], ecurr)
-    push!(out["variances"], ecurr)
+    push!(out["variances"], variance(O,ψ))
     push!(out["accumulated_error"], initial_error)
     push!(out["accumulated_var_error"], initial_error)
     push!(out["norms"], norm(O))
@@ -262,6 +261,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             push!(out["accumulated_error"], real(accumulated_error))
             push!(out["accumulated_var_error"], real(accumulated_var_error))
             push!(out["energies"], ecurr)
+            push!(out["variances"], v2)
             push!(out["norms"], n2)
             push!(out["generators"], G) 
             push!(out["angles"], θi)

@@ -92,4 +92,61 @@ function test()
     @show norm(diff) 
 end
 
-test()
+# test()
+
+
+# @testset "test_cnot" begin
+function test2()
+    N = 3
+    Random.seed!(1)
+    H = rand(PauliSum{N}, n_paulis=1)
+    ψ = KetSum(N)
+    ψ[Ket([0,0,0])] = 1
+    # ψ[Ket([0,0,0])] = 1
+    ψ = ψ * (1/norm(ψ))
+    println("H:") 
+    display(H)
+    println("ψ:") 
+    display(coeff_clip!(ψ, thresh=1e-12))
+    println("H1*H2*ψ:")
+    ψ = hadamard(ψ, 1)
+    ψ = hadamard(ψ, 2) 
+    # ψ = coeff_clip!(hadamard(ψ, 3), thresh=1e-12) 
+    display(coeff_clip!(ψ, thresh=1e-12))
+    println("CNOT(1,2)*H1*H2*ψ:")
+    ψ = cnot(ψ, 1, 2)
+    # display(coeff_clip!(ψ, thresh=1e-12))
+    ψ = cnot(ψ, 1, 2)
+    ψ = hadamard(ψ, 2)
+    ψ = hadamard(ψ, 1)
+    println()
+    display(coeff_clip!(ψ, thresh=1e-12))
+
+    # e1 = expectation_value(H,ψ)
+    # H = DBF.cnot(H, 2, 1)
+    # ψ = DBF.cnot(ψ, 2, 1)
+    # e2 = expectation_value(H,ψ)
+    # coeff_clip!(H, thresh=1e-14)
+    # coeff_clip!(ψ, thresh=1e-14)
+    # println()
+    # display(H)
+    # println()
+    # display(ψ)
+    # @show e1 ≈ e2
+    # @test e1 ≈ e2
+    
+    H = rand(PauliSum{N}, n_paulis=10)
+    H += H'
+    ψ = rand(KetSum{N}, n_terms=10)
+    ψ = ψ * (1/norm(ψ))
+
+    e1 = expectation_value(H, ψ)
+    e2a = expectation_value(H, cnot(hadamard(hadamard(ψ, 1), 2), 1, 2))
+    e2b = expectation_value(hadamard(hadamard(cnot(H, 1, 2), 1), 2), ψ)
+    @show e1
+    @show e2a
+    @show e2b
+    @test e2a ≈ e2b
+end
+
+test2()

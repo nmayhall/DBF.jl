@@ -30,5 +30,12 @@ export adapt
 export coeff_clip!
 export pack_x_z
 export project 
+export hadamard
+export cnot
+export X_gate 
+export Y_gate 
+export Z_gate 
+export S_gate 
+export T_gate 
 
 end
