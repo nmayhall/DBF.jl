@@ -147,6 +147,38 @@ function cnot(p::KetSum{N}, c::Int, t::Int) where N
     return exp(1im*π/4)*out
 end
 
+function cnot_to_paulis(N, c::Int, t::Int) 
+    c <= N || throw(DimensionMismatch)
+    t <= N || throw(DimensionMismatch)
+    Zc = PauliBasis(Pauli(N,Z=[c]))
+    Xt = PauliBasis(Pauli(N,X=[t]))
+    ZXct = PauliBasis(Pauli(N,Z=[c],X=[t]))
+    g = Vector{PauliBasis{N}}([])
+    θ = Vector{Float64}([])
+    push!(g,ZXct)
+    push!(g,Xt)
+    push!(g,Zc)
+    push!(θ, π/2)
+    push!(θ, -π/2)
+    push!(θ, -π/2)
+    return g, θ 
+end
+
+function hadamard_to_paulis(N, q::Int) 
+    q <= N || throw(DimensionMismatch)
+    Z = PauliBasis(Pauli(N,Z=[q]))
+    X = PauliBasis(Pauli(N,X=[q]))
+    g = Vector{PauliBasis{N}}([])
+    θ = Vector{Float64}([])
+    push!(g,Z)
+    push!(g,X)
+    push!(g,Z)
+    push!(θ, π/2)
+    push!(θ, π/2)
+    push!(θ, π/2)
+    return g, θ 
+end
+
 function hadamard(p::Union{PauliSum{N}, KetSum{N}}, q::Int) where N
     out = deepcopy(p)
     Z = PauliBasis(Pauli(N,Z=[q]))
@@ -155,6 +187,14 @@ function hadamard(p::Union{PauliSum{N}, KetSum{N}}, q::Int) where N
     out = evolve(out, X, π/2)
     out = evolve(out, Z, π/2)
     return -1im*out
+end
+
+function X_gate_to_paulis(N, q) 
+    return Vector{PauliBasis{N}}([PauliBasis(Pauli(N, X=[q]))]), Vector{Float64}([π])
+end
+
+function Z_gate_to_paulis(N, q) 
+    return Vector{PauliBasis{N}}([PauliBasis(Pauli(N, Z=[q]))]), Vector{Float64}([π])
 end
 
 function S_gate(p::Union{PauliSum{N}, KetSum{N}}, q) where N
@@ -175,29 +215,73 @@ function Z_gate(p::Union{PauliSum{N}, KetSum{N}}, q) where N
     return -1im*evolve(p, PauliBasis(Pauli(N, Z=[q])), π)
 end
 
-function tmp(N)
-    k = KetSum(N)
-    k[Ket{N}(0)] = 1
+function get_1d_neel_state_sequence(N)
+    g = Vector{PauliBasis{N}}([])
+    a = Vector{Float64}([])
+    for i in 1:N
+        if i%2 == 0
+            push!(g, PauliBasis(Pauli(N, X=[i])))
+            push!(a, π)
+        end
+    end
+    return g, a 
+end
+
+function get_rvb_sequence(N)
+    g = Vector{PauliBasis{N}}([])
+    θ = Vector{Float64}([])
     for i in 0:N-1
         if i%2==0
-            k = X_gate(k,i+1)
+            gi, θi = X_gate_to_paulis(N, i+1)
+            g = vcat(g, reverse(gi))
+            θ = vcat(θ, reverse(θi))
         end
     end
     for i in 0:N-1
         if i % 2 == 1
-            k = hadamard(k, i + 1)
-            k = Z_gate(k,i+1)
-            k = cnot(k, i + 1, (i + 1) % N + 1)
-            # k = hadamard(k, i + 1)
-            @show (i+1), (i+1)%N+1
-        # else
-        #     k = hadamard(k, i + 1)
-        #     k = Z_gate(k,i+1)
-        #     k = cnot(k, i + 1, (i + 1) % N + 1)
-        #     # k = hadamard(k, i + 1)
-        #     @show (i+1), (i+1)%N+1
+            gi, θi = hadamard_to_paulis(N, i+1)
+            g = vcat(g, reverse(gi))
+            θ = vcat(θ, reverse(θi))
+            gi, θi = Z_gate_to_paulis(N, i+1)
+            g = vcat(g, reverse(gi))
+            θ = vcat(θ, reverse(θi))
         end
     end
+    for i in 0:N-1
+        if i % 2 == 1
+            gi, θi = cnot_to_paulis(N, i+1, (i+1)%N + 1)
+            g = vcat(g, reverse(gi))
+            θ = vcat(θ, reverse(θi))
+        end
+    end
+    return reverse(g), reverse(θ) 
+end
+
+function cluster_state_1d(N)
+    gates = []
+    k = KetSum(N)
+    k[Ket{N}(0)] = 1
+    # for i in 0:N-1
+    #     if i%2==0
+    #         k = X_gate(k,i+1)
+    #         g(x) = X_gate(x,i+1)
+    #         push!(gates,g)
+    #     end
+    # end
+    for i in 0:N-1
+        k = hadamard(k, i + 1)
+        g(x) = hadamard(x,i+1)
+        push!(gates,g)
+    end
+    for i in 0:N-2
+        k = hadamard(k, (i+1)%N+1)
+        k = cnot(k, i + 1, (i + 1) % N + 1)
+        k = hadamard(k, (i+1)%N+1)
+        @show (i+1), (i+1)%N+1
+        
+        # g(x) = cnot(x,i+1, (i+1)%N+1)
+        # push!(gates,g)
+    end
     display(coeff_clip!(k, thresh=1e-12)) 
-    return k 
+    return k, gates 
 end

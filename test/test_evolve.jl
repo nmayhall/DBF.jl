@@ -134,19 +134,33 @@ function test2()
     # display(ψ)
     # @show e1 ≈ e2
     # @test e1 ≈ e2
-    
-    H = rand(PauliSum{N}, n_paulis=10)
+   
+    N = 8
+    H = DBF.heisenberg_1D(N, -1, -1, -1)
     H += H'
+    coeff_clip!(H)
+    # H = rand(PauliSum{N}, n_paulis=10)
+    # H += H'
     ψ = rand(KetSum{N}, n_terms=10)
     ψ = ψ * (1/norm(ψ))
 
-    e1 = expectation_value(H, ψ)
-    e2a = expectation_value(H, cnot(hadamard(hadamard(ψ, 1), 2), 1, 2))
-    e2b = expectation_value(hadamard(hadamard(cnot(H, 1, 2), 1), 2), ψ)
-    @show e1
-    @show e2a
-    @show e2b
-    @test e2a ≈ e2b
+    g,a = DBF.get_rvb_sequence(N)
+    ψ1 = deepcopy(ψ)
+    for (gi,ai) in zip(reverse(g),reverse(a))
+        ψ1 = evolve(ψ1, gi, ai)
+    end
+    H1, _, _ = evolve(H, g, a)
+    
+    e1 = expectation_value(H,ψ1)
+    e2 = expectation_value(H1,ψ)
+    @test e1 ≈ e2
+    # e1 = expectation_value(H, ψ)
+    # e2a = expectation_value(H, cnot(hadamard(hadamard(ψ, 1), 2), 1, 2))
+    # e2b = expectation_value(hadamard(hadamard(cnot(H, 1, 2), 1), 2), ψ)
+    # @show e1
+    # @show e2a
+    # @show e2b
+    # @test e2a ≈ e2b
 end
 
 test2()
