@@ -9,7 +9,7 @@ using DBF
 # function test2()
     Random.seed!(2)
     for N in 1:6
-        O = rand(PauliSum{N}, n_paulis=50)
+        O = rand(PauliSum{N}, n_paulis=200)
         @test norm(diag(Matrix(O))) ≈ norm(Matrix(diag(O))) 
 
         G = rand(PauliBasis{N})
@@ -21,6 +21,8 @@ using DBF
         θ = rand()
         U = exp(Matrix(-1im * θ/2 * Matrix(G)))
         @test norm(Matrix(evolve(O,G,θ)) -  U'*Matrix(O)*U) < 1e-13
+        O2 = deepcopy(O)
+        @test norm(Matrix(evolve!(O2,G,θ)) -  U'*Matrix(O)*U) < 1e-13
         # @test isapprox(Matrix(evolve(O,G,θ)),  U'*Matrix(O)*U, atol=1e-14)
         
         

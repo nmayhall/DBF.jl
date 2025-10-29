@@ -73,7 +73,8 @@ d/dt H = [H,[H,P]]
 
 where P = |000...><000...| = equal sum of all diagonal paulis
 """
-function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N}; 
+function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
+            n_body=1, 
             initial_error = 0,
             initial_norm_error = 0,
             max_iter=10, verbose=1, conv_thresh=1e-3,
@@ -107,7 +108,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     accumulated_norm_error = initial_norm_error 
         
     verbose < 2 || println("\n Compute PT2 correction")
-    e0, e2 = pt2(O, ψ)
+    @show e0, e2 = pt2(O, ψ)
    
     # 
     # Initialize data collection
@@ -137,7 +138,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     
     push!(out["energies_per_grad"], ecurr)
     push!(out["accumulated_error_per_grad"], initial_error)
-    push!(out["pt2_per_grad"], e2)
+    push!(out["pt2_per_grad"], real(e2))
     push!(out["variance_per_grad"], variance(O,ψ))
     push!(out["norms_per_grad"], norm(O))
    
@@ -162,20 +163,21 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %8s", "Time")
     verbose < 1 || @printf("\n")
 
+    P = create_0_projector(N, n_body)
+    
     for iter in 1:max_iter
         
        
         # Create the iteration dependent pool
-        pool = commute_with_Zs(O)
-
-        len_comm = length(pool)
+        G = commutator(P,O)  
+        
+        len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
-        coeff_clip!(pool, thresh=grad_coeff_thresh)
-        weight_clip!(pool, grad_weight_thresh)
-        # pool = find_top_k(pool, search_n_top)
+        coeff_clip!(G, thresh=grad_coeff_thresh)
+        weight_clip!(G, grad_weight_thresh)
        
-        if length(pool) == 0
-            @warn " No search direction found. Increase `n_top` or decrease `clip`"
+        if length(G) == 0
+            @warn " No search direction found. Increase decrease `grad_coeff_thresh`."
             break
         end
 
@@ -186,7 +188,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         σv = matvec(xzO, ψ)
 
         # Compute gradient vector
-        for (p,c) in pool
+        for (p,c) in G 
             # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             ci, σ = p*ψ
@@ -201,21 +203,21 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
         
         sorted_idx = reverse(sortperm(abs.(grad_vec)))
-
-        verbose < 2 || @printf("     %8s %12s %12s", "pool idx", "||O||", "<ψ|H|ψ>")
+        
+        verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
         time = @elapsed for gi in sorted_idx
             
-            G = grad_ops[gi]
-            θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
+            Gi = grad_ops[gi]
+            θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
          
             if clifford_check
                 # See if we can do a cheap clifford operation
                 if costi(0) - costi(π / 2) > energy_lowering_thresh
                     θi = π / 2
-                    println("clifford:", string(G))
+                    println("clifford:", string(Gi))
                 end
             end
 
@@ -224,7 +226,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             costi(0) - costi(θi) > energy_lowering_thresh || continue
 
 
-            O = evolve(O,G,θi)
+            # O = evolve(O,G,θi)
+            evolve!(O,Gi,θi)
 
             e1 = expectation_value(O,ψ)
             v1 = variance(O,ψ)
@@ -263,7 +266,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             push!(out["energies"], ecurr)
             push!(out["variances"], v2)
             push!(out["norms"], n2)
-            push!(out["generators"], G) 
+            push!(out["generators"], Gi) 
             push!(out["angles"], θi)
 
             if n_rots >= max_rots_per_grad
@@ -296,7 +299,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8.2f", time)
         verbose < 1 || @printf("\n")
         
-        push!(out["pt2_per_grad"], e2)
+        push!(out["pt2_per_grad"], real(e2))
         push!(out["accumulated_error_per_grad"], accumulated_error)
         push!(out["energies_per_grad"], ecurr)
         push!(out["variance_per_grad"], var_curr)
@@ -351,6 +354,28 @@ function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N
     return out_tot
 end
 
+function commutator(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12) where N
+    out_tot = PauliSum(N)
+   
+    for (p1, c1) in O1
+        
+        out = PauliSum(N)
+        sizehint!(out, min(1000, length(O2)//2)) # assume half commute
+
+        for (p2, c2) in O2
+            
+            !PauliOperators.commute(p1,p2) || continue
+            p3 = p1*p2 
+            curr = get(out, PauliBasis(p3), 0.0) 
+            out[PauliBasis(p3)] = curr + 2*coeff(p3)*c1*c2
+        end
+        coeff_clip!(out, thresh=thresh)
+        sum!(out_tot, out)
+        coeff_clip!(out_tot, thresh=thresh)
+    end
+    return out_tot
+end
+
 
 
 """
@@ -396,7 +421,7 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %12s", "total_error")
     verbose < 1 || @printf(" %12s", "E(2)")
     verbose < 1 || @printf(" %12s", "|H|")
-    verbose < 1 || @printf(" %8s", "#PoolOps")
+    verbose < 1 || @printf(" %8s", "#Grad_Ops")
     verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "len(H)")
     verbose < 1 || @printf(" %12s", "variance")

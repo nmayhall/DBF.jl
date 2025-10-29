@@ -20,6 +20,7 @@ include("schrodinger_picture.jl")
 
 
 export evolve
+export evolve!
 export inner_product
 export offdiag
 export inner_product

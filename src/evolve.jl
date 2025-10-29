@@ -34,6 +34,25 @@ function evolve(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
 end
 
 
+function evolve!(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
+    _cos = cos(θ)
+    _sin = 1im*sin(θ)
+    sin_branch = PauliSum(N)
+    for (p,c) in O
+        if PauliOperators.commute(p,G) == false
+            # replace sum! with more efficient version
+            # sum!(sin_branch, c*_sin*G*p)
+            tmp = c*_sin*G*p
+            curr = get(sin_branch, PauliBasis(tmp), 0.0) + PauliOperators.coeff(tmp)
+            sin_branch[PauliBasis(tmp)] = curr 
+            O[p] *= _cos
+        end
+    end
+    sum!(O, sin_branch)
+    return O 
+end
+
+
 function evolve(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
     _cos = cos(θ/2)
     _sin = 1im*sin(θ/2)
@@ -254,34 +273,40 @@ function get_rvb_sequence(N)
             θ = vcat(θ, reverse(θi))
         end
     end
+    push!(g, PauliBasis(Pauli(N, Y=[1], X=[i for i in 2:N])))
+    push!(θ, -π/2)
     return reverse(g), reverse(θ) 
 end
 
-function cluster_state_1d(N)
-    gates = []
-    k = KetSum(N)
-    k[Ket{N}(0)] = 1
-    # for i in 0:N-1
-    #     if i%2==0
-    #         k = X_gate(k,i+1)
-    #         g(x) = X_gate(x,i+1)
-    #         push!(gates,g)
-    #     end
-    # end
+function get_1d_cluster_state_sequence(N)
+    g = Vector{PauliBasis{N}}([])
+    θ = Vector{Float64}([])
     for i in 0:N-1
-        k = hadamard(k, i + 1)
-        g(x) = hadamard(x,i+1)
-        push!(gates,g)
+        if i%2==0
+            gi, θi = X_gate_to_paulis(N, i+1)
+            g = vcat(g, reverse(gi))
+            θ = vcat(θ, reverse(θi))
+        end
+    end
+    for i in 0:N-1
+        gi, θi = hadamard_to_paulis(N, i+1)
+        g = vcat(g, reverse(gi))
+        θ = vcat(θ, reverse(θi))
     end
     for i in 0:N-2
-        k = hadamard(k, (i+1)%N+1)
-        k = cnot(k, i + 1, (i + 1) % N + 1)
-        k = hadamard(k, (i+1)%N+1)
-        @show (i+1), (i+1)%N+1
         
-        # g(x) = cnot(x,i+1, (i+1)%N+1)
-        # push!(gates,g)
+        gi, θi = hadamard_to_paulis(N, i+2)
+        g = vcat(g, reverse(gi))
+        θ = vcat(θ, reverse(θi))
+        
+        gi, θi = cnot_to_paulis(N, i+1, i+2)
+        g = vcat(g, reverse(gi))
+        θ = vcat(θ, reverse(θi))
+        
+        gi, θi = hadamard_to_paulis(N, i+2)
+        g = vcat(g, reverse(gi))
+        θ = vcat(θ, reverse(θi))
+        
     end
-    display(coeff_clip!(k, thresh=1e-12)) 
-    return k, gates 
+    return reverse(g), reverse(θ) 
 end

@@ -71,6 +71,13 @@ using BenchmarkTools
     ref = Z*H - H*Z
     tst = DBF.commute_with_Zs(H)
     @test norm(ref + -1*tst) < 1e-14
+   
+    for i in 1:N
+        Z = DBF.create_0_projector(N, i)
+        ref = Z*H - H*Z
+        tst = DBF.commutator(Z,H)
+        @test norm(ref + -1*tst) < 1e-13
+    end
 end
 
 # test()
