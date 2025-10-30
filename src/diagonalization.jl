@@ -10,21 +10,28 @@ using Optim
 Compute the double bracket flow for diagonalization of `Oin`
 """
 function dbf_diag(Oin::PauliSum{N,T}; 
-            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
+            max_iter=10, verbose=1, conv_thresh=1e-3,
             evolve_coeff_thresh=1e-12,
-            evolve_weigth_thresh=20,
-            search_n_top=100,
+            evolve_weight_thresh=20,
+            max_rots_per_grad = 100,
+            # search_n_top=100,
+            ψ=Ket{N}(Int128(0)),
             extra_diag=nothing) where {N,T}
 
     O = deepcopy(Oin)
     generators = Vector{PauliBasis}([])
     angles = Vector{Float64}([])
-    norm_old = norm(diag(O))
-
-    G_old = Pauli(N)
+    diag_norm_old = norm(diag(O))
 
 
-    verbose < 1 || @printf(" %6s %12s %12s %12s %12s G\n", "Iter", "θ", "|O|", "|diag(O)|", "len(O)")
+    verbose < 1 || @printf(" %6s",  "Iter")
+    verbose < 1 || @printf(" %12s", "|O|")
+    verbose < 1 || @printf(" %12s", "|Od|/|O|")
+    verbose < 1 || @printf(" %12s", "len(O)")
+    verbose < 1 || @printf(" %12s", "len(G)")
+    verbose < 1 || @printf(" %12s", "E0")
+    verbose < 1 || @printf(" %12s", "PT2")
+    verbose < 1 || @printf("\n")
     for iter in 1:max_iter
         S = diag(O)
 
@@ -34,73 +41,70 @@ function dbf_diag(Oin::PauliSum{N,T};
         end
 
         # Find Search Direction:
-        # this commutator seems to be the most expensive part at first.
-        # Simplest thing to do is to just clip both before computing the 
-        # Commutator, as the max commutator coomponent will most likely 
-        # still be in here
-        # old: 
-        # com = O*S - S*O
         # com = max_of_commutator(O,S,clip=bracket_thresh)
         # SO_OS = max_of_commutator2(S,O,clip=bracket_thresh, n_top=100)
-        SO_OS = max_of_commutator2(S, O, n_top=search_n_top)
-        
+        # SO_OS = max_of_commutator2(S, O, n_top=search_n_top)
+        SO_OS = commutator(S, O)
+         
         if length(SO_OS) == 0
             @warn " No search direction found. Increase `n_top` or decrease `clip`"
             break
         end
 
-        coeff, G = findmax(v -> abs(v), SO_OS) 
+        # coeff, G = findmax(v -> abs(v), SO_OS) 
+        Gsorted = reverse(sort(collect(SO_OS), by = x -> abs(x[2])))
+
         
-        #
-        # Find the optimal rotation angle along generator G 
-        θi, costi = DBF.optimize_theta_diagonalization(O,G,verbose=0)
-        push!(generators, G)
-        push!(angles, θi)
-        
-        #
-        # Evolve
-        O = evolve(O,G,θi)
+        n_rots = 0
+        time = @elapsed for (gi,ci) in Gsorted
+            
+            #
+            # Find the optimal rotation angle along generator G 
+            θi, costi = DBF.optimize_theta_diagonalization(O,gi,verbose=0)
+            push!(generators, gi)
+            push!(angles, θi)
+            
+            #
+            # Evolve
+            O = evolve(O,gi,θi)
 
-        # if norm(O) - costi(θi) > 1e-12
-        #     @warn " Cost function not accurate: "
-        #     @show norm(O), θi, costi(θi)
-        #     # throw(ErrorException)
-        # end
+            #
+            # Here's where we will do our truncating
+            coeff_clip!(O, thresh=evolve_coeff_thresh)
+            weight_clip!(O, evolve_weight_thresh)
+            
 
-        #
-        # Here's where we will do our truncating
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
-        weight_clip!(O, evolve_weigth_thresh)
-        
+            diag_norm = norm(diag(O))
+            full_norm = norm(O)
 
-        norm_new = norm(diag(O))
-        # norm_new = costi(θi)/O_norm 
-        verbose < 1 || @printf(" %6i %12.8f %12.8f %12.8f %12i", iter, θi, norm(O), norm_new, length(O))
-        verbose < 1 || @printf(" %s", string(G))
-        verbose < 1 || @printf("\n")
-
-        #
-        # Check for convergence
-        # if norm_new < conv_thresh
-        # # if norm_new < conv_thresh
-        #     verbose < 1 || @printf(" Converged.\n")
-        # end
-       
-        if G == G_old
-            @warn " Operator repeated" string(G) string(G_old) θi
-            break
+            if n_rots >= max_rots_per_grad
+                break
+            end
+            n_rots += 1
         end
+        e0,e2 = pt2(O,ψ)
         
-        if norm_new < norm_old
-            @warn " Norm increased?" norm_new norm_old norm_new-norm_old
+        full_norm = norm(O) 
+        diag_norm = norm(diag(O)) 
+
+        verbose < 1 || @printf(" %6i",  iter)
+        verbose < 1 || @printf(" %12.8f", full_norm)
+        verbose < 1 || @printf(" %12.8f", diag_norm/full_norm)
+        verbose < 1 || @printf(" %12i", length(O))
+        verbose < 1 || @printf(" %12i", length(SO_OS))
+        verbose < 1 || @printf(" %12.8f", e0)
+        verbose < 1 || @printf(" %12.8f", e2)
+        verbose < 1 || @printf("\n")
+        
+        if norm(diag(O)) < diag_norm_old
+            @warn " Norm increased?" norm(diag(O)) diag_norm_old
             break
         end
         if iter == max_iter
             @warn " Not converged" iter max_iter
         end
         
-        norm_old = norm_new
-        G_old = G
+        diag_norm_old = norm(diag(O)) 
     end
     return O, generators, angles
 end
