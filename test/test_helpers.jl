@@ -78,6 +78,39 @@ using BenchmarkTools
         tst = DBF.commutator(Z,H)
         @test norm(ref + -1*tst) < 1e-13
     end
+
+
+    N = 5
+    a = rand(PauliSum{N}, n_paulis=1000)
+    b = rand(PauliSum{N}, n_paulis=1000)
+    @test abs(tr(a'*b)/2^N - inner_product(a,b)) < 1e-12
+
+    N = 5
+    a = rand(KetSum{N}, n_terms=1000)
+    b = rand(KetSum{N}, n_terms=1000)
+    @test abs(Vector(a)'*Vector(b) - inner_product(a,b)) < 1e-12
+
+
+    ## momoents 
+    N = 5
+    H = rand(PauliSum{N}, n_paulis=1000)
+    H += H'
+    Hmat = Matrix(H)
+    ψ = Ket{N}(0) 
+
+    k1 = expectation_value(H,ψ)
+    k2 = DBF.variance(H,ψ)
+    _,_,k3 = DBF.skewness(H,ψ)
+   
+    ψv = Vector(ψ)
+    m1 = ψv'*Hmat*ψv 
+    m2 = ψv'*Hmat*Hmat*ψv 
+    m3 = ψv'*Hmat*Hmat*Hmat*ψv 
+
+    @test abs(m1-k1) < 1e-12
+    @test abs((m2 - m1^2) - k2) < 1e-12
+    @test abs((m3 - 3*m2*m1 + 2*m1^3) - k3) < 1e-10
+
 end
 
 # test()

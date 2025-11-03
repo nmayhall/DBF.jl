@@ -167,6 +167,31 @@ function variance(O::PauliSum{N}, ψ::Ket{N}) where N
     return e2 - e1^2
 end
 
+function skewness(O::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
+    Oxz = pack_x_z(O)
+    σ = matvec(Oxz, ψ)
+    Oσ = deepcopy(σ)
+    for (x,zs) in Oσ
+        Oσ[x] = T(0)
+    end
+    # Oσ = subspace_matvec(Oxz, σ)
+    subspace_matvec_thread!(Oσ, Oxz, σ)
+
+    m3 = inner_product(σ,Oσ)
+    m2 = inner_product(σ,σ)
+    m1 = expectation_value(O,ψ)
+
+    k1 = m1
+    k2 = m2 - m1^2
+    k3 = m3 - 3*m2*m1 + 2*m1^3
+
+    # @show m1
+    # @show m2
+    # @show m3
+    return k1, k2, k3 
+end
+
+
 function generate_commutator_pool(O::PauliSum{N}) where N
     S = PauliSum(N)
     for i in 1:N

@@ -273,8 +273,8 @@ function get_rvb_sequence(N)
             θ = vcat(θ, reverse(θi))
         end
     end
-    push!(g, PauliBasis(Pauli(N, Y=[1], X=[i for i in 2:N])))
-    push!(θ, -π/2)
+    # push!(g, PauliBasis(Pauli(N, Y=[1], X=[i for i in 2:N])))
+    # push!(θ, -π/2)
     return reverse(g), reverse(θ) 
 end
 

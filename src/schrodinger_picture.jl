@@ -92,8 +92,8 @@ end
     
     
 function subspace_matvec_thread!(s::KetSum{N,T}, O::XZPauliSum, v::KetSum{N,T}) where {N,T}
-    s = KetSum(N, T=ComplexF64) 
-    for (sk,sc) in v 
+    # s = KetSum(N, T=ComplexF64) 
+    for (sk,sc) in s 
         s[sk] = 0
     end
 
