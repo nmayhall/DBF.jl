@@ -187,7 +187,7 @@ function PauliOperators.KetSum(basis::Vector{Ket{N}}; T=Float64) where N
 end
 
 """
-    cepa(H::XZPauliSum, v0::KetSum{N}; thresh=1e-4) where N
+    cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=1e-6) where N
 
 PHPc + PHQc = EPc
 QHPc + QHQc = EQc
@@ -266,13 +266,22 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
     return e0, e, x, basis
 end
 
-function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6, max_iter=10) where N
+"""
+    fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6, max_iter=10) where N
+
+TBW
+"""
+function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6, max_iter=10, krylov_order=1) where N
 
     ref_basis = [ref]
     vref = KetSum(ref_basis)
     fill!(vref, [1], ref_basis)
     H = pack_x_z(Hin)
     fois = DBF.matvec(H, vref)
+    for i in 2:krylov_order
+        fois += DBF.matvec(H, fois)
+        # sum!(fois, DBF.matvec(H, fois))
+    end
     coeff_clip!(fois, thresh=thresh)
     basis = collect(keys(fois))
     e0 = expectation_value(H, ref)
@@ -303,7 +312,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing,
 end
 
 """
-    pt2(H::PauliSum{N,T}, k::Ket{N}) where {N,T}
+    pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
 
 e2 = |<k|Ho|x>|^2 / (e0 - <x|Hd|x>)
 """

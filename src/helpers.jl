@@ -403,6 +403,16 @@ end
 
 
 
+function Base.sum!(O::KetSum{N,T}, k::KetSum{N}) where {N,T}
+    out = KetSum(N)
+    for (p,c) in O
+        c2,k2 = p*k
+        tmp = get(out, k2, 0.0)
+        out[k2] = tmp + c2*c
+    end
+    return out 
+end
+
 function Base.:*(O::PauliSum{N,T}, k::Ket{N}) where {N,T}
     out = KetSum(N)
     for (p,c) in O
@@ -469,4 +479,19 @@ function pack_x_z(H::PauliSum{N,T}) where {N,T}
         h[p.x] = dx
     end
     return h
+end
+
+
+function Base.:-(ps1::KetSum, ps2::KetSum)
+    out = deepcopy(ps2)
+    map!(x->-x, values(out))
+    mergewith!(+, out, ps1)
+    return out 
+end
+
+
+function Base.:+(ps1::KetSum, ps2::KetSum)
+    out = deepcopy(ps2)
+    mergewith!(+, out, ps1)
+    return out 
 end

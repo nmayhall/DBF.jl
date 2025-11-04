@@ -414,4 +414,26 @@ function graph_adjacency(O::PauliSum{N,T}) where {N,T}
     end
     
     return A 
-end 
+end
+
+
+function S2(N)
+    S2 = PauliSum(N, Float64)
+    for i in 1:N
+        S2 += .75 * Pauli(N)
+        for j in i+1:N
+            S2 += .5 * Pauli(N, X=[i,j])
+            S2 += .5 * Pauli(N, Y=[i,j])
+            S2 += .5 * Pauli(N, Z=[i,j])
+        end 
+    end
+    return S2 
+end
+
+function Sz(N)
+    Sz = PauliSum(N, Float64)
+    for i in 1:N
+        Sz += .5 * Pauli(N, Z=[i])
+    end
+    return Sz 
+end
