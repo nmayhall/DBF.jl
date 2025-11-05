@@ -1,4 +1,5 @@
 using JLD2
+using TimerOutputs
 
 """
     optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
@@ -101,6 +102,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     generators = Vector{PauliBasis{N}}([])
     angles = Vector{Float64}([])
 
+    to = TimerOutput()
+
     ecurr = expectation_value(O, ψ) 
     accumulated_error = initial_error 
     accumulated_pt2_error = 0 
@@ -167,9 +170,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     
     for iter in 1:max_iter
         
+        time = 0
        
         # Create the iteration dependent pool
-        G = commutator(P,O)  
+        time += @elapsed @timeit to "commutator" G = commutator(P,O)  
         
         len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
@@ -184,11 +188,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         grad_vec = Vector{Float64}([])
         grad_ops = Vector{PauliBasis{N}}([])
       
-        xzO = pack_x_z(O)
-        σv = matvec(xzO, ψ)
+        @timeit to "Pack" xzO = pack_x_z(O)
+        @timeit to "matvec" σv = matvec(xzO, ψ)
 
         # Compute gradient vector
-        for (p,c) in G 
+        time += @elapsed @timeit to "gradient" for (p,c) in G 
             # dyad = (ψ * ψ') * p'
             # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
             ci, σ = p*ψ
@@ -208,10 +212,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
-        time = @elapsed for gi in sorted_idx
+        time += @elapsed for gi in sorted_idx
             
             Gi = grad_ops[gi]
-            θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
+            @timeit to "opt_theta" θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
          
             if clifford_check
                 # See if we can do a cheap clifford operation
@@ -227,26 +231,26 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
 
             # O = evolve(O,G,θi)
-            evolve!(O,Gi,θi)
+            @timeit to "evolve" evolve!(O,Gi,θi)
 
-            e1 = expectation_value(O,ψ)
-            v1 = variance(O,ψ)
+            @timeit to "expval" e1 = expectation_value(O,ψ)
+            @timeit to "variance" v1 = variance(O,ψ)
             n1 = norm(O)
             pt2_1 = 0
             pt2_2 = 0
             if compute_pt2_error
-                _, pt2_1 = pt2(O, ψ)
+                @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
             end
             
             #
             # Truncate operator
             coeff_clip!(O, thresh=evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
-            e2 = expectation_value(O,ψ)
-            v2 = variance(O,ψ)
+            @timeit to "expval" e2 = expectation_value(O,ψ)
+            @timeit to "variance" v2 = variance(O,ψ)
             n2 = norm(O)
             if compute_pt2_error
-                _, pt2_2 = pt2(O, ψ)
+                @timeit to "pt2" _, pt2_2 = pt2(O, ψ)
             end
 
             accumulated_error += e2 - e1
@@ -254,7 +258,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             accumulated_var_error += v2 - v1
             accumulated_norm_error += n2^2 - n1^2
             
-            ecurr = expectation_value(O, ψ) 
+            @timeit to "expval" ecurr = expectation_value(O, ψ) 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
             verbose < 2 || @printf("\n")
@@ -274,10 +278,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             end
         end
         verbose < 2 || println("\n Compute PT2 correction")
-        e0, e2 = pt2(O, ψ)
+        @timeit to "pt2" e0, e2 = pt2(O, ψ)
         verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
         
-        var_curr = variance(O,ψ)
+        @timeit to "variance" var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
         verbose < 1 || @printf(" %12.8f", real(accumulated_error))
@@ -327,6 +331,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         
     end
     out["hamiltonian"] = O 
+    show(to) 
+    println() 
     return out 
 end
 
