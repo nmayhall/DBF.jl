@@ -275,20 +275,38 @@ end
 
 
 function get_weight_counts(O::PauliSum{N}) where N
-    counts = zeros(Int, N)
+    counts = zeros(Int, N+1)
     for (p,c) in O
-        counts[weight(p)] += 1
+        counts[weight(p)+1] += 1
+    end
+    return counts
+end
+
+
+function get_mweight_counts(O::PauliSum{N}) where N
+    counts = zeros(Int, N+1)
+    for (p,c) in O
+        counts[majorana_weight(p)+1] += 1
     end
     return counts
 end
 
 
 function get_weight_probs(O::PauliSum{N}) where N
-    probs = zeros(N)
+    probs = zeros(N+1)
     for (p,c) in O
-        probs[weight(p)] += abs2(c) 
+        probs[weight(p)+1] += abs2(c) 
     end
     return probs 
+end
+
+
+function get_mweight_probs(O::PauliSum{N}) where N
+    counts = zeros(N+1)
+    for (p,c) in O
+        counts[majorana_weight(p)+1] += abs2(c) 
+    end
+    return counts
 end
 
 function add_single_excitations(k::Ket{N}) where N

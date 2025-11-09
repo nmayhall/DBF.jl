@@ -79,11 +79,13 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             initial_error = 0,
             initial_norm_error = 0,
             max_iter=10, verbose=1, conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-12,
-            evolve_weight_thresh=nothing,
-            grad_coeff_thresh=1e-8,
-            grad_weight_thresh=nothing,
-            energy_lowering_thresh=1e-3,
+            evolve_coeff_thresh=1e-6,
+            evolve_weight_thresh=N,
+            evolve_mweight_thresh=N,
+            grad_coeff_thresh=1e-6,
+            grad_weight_thresh=N,
+            grad_mweight_thresh=N,
+            energy_lowering_thresh=1e-6,
             max_rots_per_grad = 100,
             clifford_check = false,
             compute_var_error = true,
@@ -91,12 +93,12 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             checkfile=nothing) where {N,T}
        
 
-    if grad_weight_thresh === nothing
-        grad_weight_thresh = N
-    end
-    if evolve_weight_thresh === nothing
-        evolve_weight_thresh = N
-    end
+    # if grad_weight_thresh === nothing
+    #     grad_weight_thresh = N
+    # end
+    # if evolve_weight_thresh === nothing
+    #     evolve_weight_thresh = N
+    # end
 
     O = deepcopy(Oin)
     generators = Vector{PauliBasis{N}}([])
@@ -178,7 +180,12 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
         coeff_clip!(G, thresh=grad_coeff_thresh)
-        weight_clip!(G, grad_weight_thresh)
+        if grad_weight_thresh < N
+            weight_clip!(G, grad_weight_thresh)
+        end
+        if grad_mweight_thresh < N
+            majorana_weight_clip!(G, grad_mweight_thresh)
+        end
        
         if length(G) == 0
             @warn " No search direction found. Increase decrease `grad_coeff_thresh`."
@@ -245,7 +252,13 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             #
             # Truncate operator
             coeff_clip!(O, thresh=evolve_coeff_thresh)
-            weight_clip!(O, evolve_weight_thresh)
+            if evolve_weight_thresh < N
+                weight_clip!(O, evolve_weight_thresh)
+            end
+            if evolve_mweight_thresh < N
+                majorana_weight_clip!(O, evolve_mweight_thresh)
+            end
+            # weight_clip!(O, evolve_weight_thresh)
             @timeit to "expval" e2 = expectation_value(O,ψ)
             @timeit to "variance" v2 = variance(O,ψ)
             n2 = norm(O)
