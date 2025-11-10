@@ -154,8 +154,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %12s", "PT_error")
     end
     verbose < 1 || @printf(" %10s", "E(2)")
-    verbose < 1 || @printf(" %8s", "norm_err")
-    verbose < 1 || @printf(" %8s", "norm(G)")
+    verbose < 1 || @printf(" %12s", "norm_err")
+    verbose < 1 || @printf(" %9s", "norm(G)")
     verbose < 1 || @printf(" %10s", "len([H,Z])")
     verbose < 1 || @printf(" %8s", "len(G)")
     verbose < 1 || @printf(" %8s", "len(H)")
@@ -195,7 +195,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         grad_vec = Vector{Float64}([])
         grad_ops = Vector{PauliBasis{N}}([])
       
-        @timeit to "Pack" xzO = pack_x_z(O)
+        @timeit to "pack" xzO = pack_x_z(O)
         @timeit to "matvec" σv = matvec(xzO, ψ)
 
         # Compute gradient vector
@@ -213,7 +213,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
         
         
-        sorted_idx = reverse(sortperm(abs.(grad_vec)))
+        @timeit to "sort" sorted_idx = reverse(sortperm(abs.(grad_vec)))
         
         verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
@@ -228,23 +228,27 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
                 # See if we can do a cheap clifford operation
                 if costi(0) - costi(π / 2) > energy_lowering_thresh
                     θi = π / 2
-                    println("clifford:", string(Gi))
+                    # println("clifford:", string(Gi))
                 end
             end
 
-            #
-            # make sure energy lowering is large enough to warrent evolving
-            costi(0) - costi(θi) > energy_lowering_thresh || continue
+            # #
+            # # make sure energy lowering is large enough to warrent evolving
+            # costi(0) - costi(θi) > energy_lowering_thresh || continue
 
 
             # O = evolve(O,G,θi)
             @timeit to "evolve" evolve!(O,Gi,θi)
 
-            @timeit to "expval" e1 = expectation_value(O,ψ)
-            @timeit to "variance" v1 = variance(O,ψ)
             n1 = norm(O)
             pt2_1 = 0
             pt2_2 = 0
+            v1 = 0
+            v2 = 0
+            @timeit to "expval" e1 = expectation_value(O,ψ)
+            if compute_var_error
+                @timeit to "variance" v1 = variance(O,ψ)
+            end
             if compute_pt2_error
                 @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
             end
@@ -260,10 +264,12 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             end
             # weight_clip!(O, evolve_weight_thresh)
             @timeit to "expval" e2 = expectation_value(O,ψ)
-            @timeit to "variance" v2 = variance(O,ψ)
             n2 = norm(O)
             if compute_pt2_error
                 @timeit to "pt2" _, pt2_2 = pt2(O, ψ)
+            end
+            if compute_var_error
+                @timeit to "variance" v2 = variance(O,ψ)
             end
 
             accumulated_error += e2 - e1
@@ -281,7 +287,9 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             push!(out["accumulated_error"], real(accumulated_error))
             push!(out["accumulated_var_error"], real(accumulated_var_error))
             push!(out["energies"], ecurr)
-            push!(out["variances"], v2)
+            if compute_var_error
+                push!(out["variances"], v2)
+            end
             push!(out["norms"], n2)
             push!(out["generators"], Gi) 
             push!(out["angles"], θi)
@@ -302,10 +310,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             verbose < 1 || @printf(" %12.8f", real(accumulated_pt2_error))
         end
         verbose < 1 || @printf(" %10.6f", real(e2))
-        verbose < 1 || @printf(" %8.1e", accumulated_norm_error)
-        verbose < 1 || @printf(" %8.1e", norm(grad_vec))
-        verbose < 1 || @printf(" %10.1e", len_comm)
-        verbose < 1 || @printf(" %8.1e", length(grad_vec))
+        verbose < 1 || @printf(" %12.8f", accumulated_norm_error)
+        verbose < 1 || @printf(" %8.3e", norm(grad_vec))
+        verbose < 1 || @printf(" %10i", len_comm)
+        verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %4i", n_rots)
         verbose < 1 || @printf(" %8.4f", real(var_curr))
