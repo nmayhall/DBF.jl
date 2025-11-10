@@ -271,7 +271,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             accumulated_var_error += v2 - v1
             accumulated_norm_error += n2^2 - n1^2
             
-            @timeit to "expval" ecurr = expectation_value(O, ψ) 
+            ecurr = e2 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
             verbose < 2 || @printf("\n")
