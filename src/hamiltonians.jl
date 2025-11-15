@@ -1,19 +1,58 @@
 using PauliOperators
 using Random
 
-function af_heisenberg(N, Jx, Jy, Jz; x=0, y=0, z=0)
+function af_heisenberg(N, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
     H = PauliSum(N, Float64)
     for i in 0:N-1
-        H += Jx/4 * Pauli(N, X=[i+1,(i+1)%(N)+1])
-        H += Jy/4 * Pauli(N, Y=[i+1,(i+1)%(N)+1])
-        H += Jz/4 * Pauli(N, Z=[i+1,(i+1)%(N)+1])
+        if i < N - 1 || periodic
+            H += Jx/4 * Pauli(N, X=[i+1,(i+1)%(N)+1])
+            H += Jy/4 * Pauli(N, Y=[i+1,(i+1)%(N)+1])
+            H += Jz/4 * Pauli(N, Z=[i+1,(i+1)%(N)+1])
+        end 
     end 
     for i in 1:N
         H += x/2 * Pauli(N, X=[i])
         H += y/2 * Pauli(N, Y=[i])
         H += z/2 * Pauli(N, Z=[i])
     end 
+    coeff_clip!(H)
     return H
+end
+function af_heisenberg(Nx, Ny, Jx, Jy, Jz; periodic=true)
+    N_total = Nx * Ny
+    H = PauliSum(N_total, Float64)
+    
+    # Helper function to convert 2D coordinates to 1D index (1-based)
+    coord_to_index(i, j) = i + j * Nx + 1
+    
+    # Nearest-neighbor interactions
+    for j in 0:Ny-1  # Row index
+        for i in 0:Nx-1  # Column index
+            current_site = coord_to_index(i, j)
+            
+            # Right neighbor (i+1, j)
+            if i < Nx - 1 || periodic
+                right_i = periodic ? (i + 1) % Nx : i + 1
+                right_site = coord_to_index(right_i, j)
+                
+                H += Jx/4 * Pauli(N_total, X=[current_site, right_site])
+                H += Jy/4 * Pauli(N_total, Y=[current_site, right_site])
+                H += Jz/4 * Pauli(N_total, Z=[current_site, right_site])
+            end
+            
+            # Up neighbor (i, j+1)  
+            if j < Ny - 1 || periodic
+                up_j = periodic ? (j + 1) % Ny : j + 1
+                up_site = coord_to_index(i, up_j)
+                
+                H += Jx/4 * Pauli(N_total, X=[current_site, up_site])
+                H += Jy/4 * Pauli(N_total, Y=[current_site, up_site])
+                H += Jz/4 * Pauli(N_total, Z=[current_site, up_site])
+            end
+        end
+    end
+    coeff_clip!(H)
+    return H    
 end
 
 function heisenberg_1D(N, Jx, Jy, Jz; x=0, y=0, z=0)
