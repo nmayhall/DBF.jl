@@ -4,6 +4,7 @@ using Printf
 using PauliOperators
 using LinearAlgebra
 using DBF
+using BenchmarkTools
 
 @testset "test_evolve" begin
 # function test2()
@@ -165,4 +166,125 @@ function test2()
     # @test e2a ≈ e2b
 end
 
-test2()
+@testset "test_cnot" begin
+# function test2()
+    N = 3
+    Random.seed!(1)
+    H = rand(PauliSum{N}, n_paulis=1)
+    ψ = KetSum(N)
+    ψ[Ket([0,0,0])] = 1
+    # ψ[Ket([0,0,0])] = 1
+    ψ = ψ * (1/norm(ψ))
+    println("H:") 
+    display(H)
+    println("ψ:") 
+    display(coeff_clip!(ψ, thresh=1e-12))
+    println("H1*H2*ψ:")
+    ψ = hadamard(ψ, 1)
+    ψ = hadamard(ψ, 2) 
+    # ψ = coeff_clip!(hadamard(ψ, 3), thresh=1e-12) 
+    display(coeff_clip!(ψ, thresh=1e-12))
+    println("CNOT(1,2)*H1*H2*ψ:")
+    ψ = cnot(ψ, 1, 2)
+    # display(coeff_clip!(ψ, thresh=1e-12))
+    ψ = cnot(ψ, 1, 2)
+    ψ = hadamard(ψ, 2)
+    ψ = hadamard(ψ, 1)
+    println()
+    display(coeff_clip!(ψ, thresh=1e-12))
+
+    # e1 = expectation_value(H,ψ)
+    # H = DBF.cnot(H, 2, 1)
+    # ψ = DBF.cnot(ψ, 2, 1)
+    # e2 = expectation_value(H,ψ)
+    # coeff_clip!(H, thresh=1e-14)
+    # coeff_clip!(ψ, thresh=1e-14)
+    # println()
+    # display(H)
+    # println()
+    # display(ψ)
+    # @show e1 ≈ e2
+    # @test e1 ≈ e2
+   
+    N = 8
+    H = DBF.heisenberg_1D(N, -1, -1, -1)
+    H += H'
+    coeff_clip!(H)
+    # H = rand(PauliSum{N}, n_paulis=10)
+    # H += H'
+    ψ = rand(KetSum{N}, n_terms=10)
+    ψ = ψ * (1/norm(ψ))
+
+    g,a = DBF.get_rvb_sequence(N)
+    ψ1 = deepcopy(ψ)
+    for (gi,ai) in zip(reverse(g),reverse(a))
+        ψ1 = evolve(ψ1, gi, ai)
+    end
+    H1, _, _ = evolve(H, g, a)
+    
+    e1 = expectation_value(H,ψ1)
+    e2 = expectation_value(H1,ψ)
+    @test e1 ≈ e2
+    # e1 = expectation_value(H, ψ)
+    # e2a = expectation_value(H, cnot(hadamard(hadamard(ψ, 1), 2), 1, 2))
+    # e2b = expectation_value(hadamard(hadamard(cnot(H, 1, 2), 1), 2), ψ)
+    # @show e1
+    # @show e2a
+    # @show e2b
+    # @test e2a ≈ e2b
+end
+
+
+@testset "test_dfs" begin
+# function test3()
+    Random.seed!(2)
+
+    N = 12 
+    # p = rand(PauliBasis{N})
+    # H = DBF.af_heisenberg(N, 1, 1, 1)
+    H = rand(PauliSum{N}, n_paulis=20)
+    H = H + H'
+    
+    generators = Vector{PauliBasis{N}}([])
+    angles = Vector{Float64}([])
+    for (p,c) in H
+        push!(generators, p)
+        push!(angles, real(c))
+    end
+
+    O = PauliSum(Pauli(N,Z=[1]))
+    O1 = deepcopy(O)
+    O2 = PauliBasis(Pauli(N,Z=[1]))
+    
+    @time O1, _ = evolve(O1, generators, angles, thresh=-1)
+    e1 = expectation_value(O1, Ket{N}(0))
+    # @time e2 = DBF.dfs(O2, generators, angles, ψ = Ket{N}(0))
+    @time e3 = expectation_value_dfs(O2, generators, angles, Ket{N}(0))
+    @printf("%12.8f %12.8f\n", e1, e3)
+    # @printf("%12.8f %12.8f %12.8f\n", e1, e2, e3)
+  
+    @test e1 ≈ e3
+    # Now pre-allocate - and check for repeated use (thinking of multithreading)
+    n_gen = length(generators)
+    stack_paulis = Vector{PauliBasis{N}}(undef, n_gen + 1)
+    stack_coeffs = Vector{ComplexF64}(undef, n_gen + 1)
+    stack_depths = Vector{Int}(undef, n_gen + 1)
+    
+    @time e4 = expectation_value_dfs(O2, generators, angles, Ket{N}(0), 
+                                        stack_paulis, stack_coeffs, stack_depths)
+    @test e1 ≈ e4
+    @printf(" %12.8f\n", e4)
+    @time e4 = expectation_value_dfs(O2, generators, angles, Ket{N}(0), 
+                                        stack_paulis, stack_coeffs, stack_depths)
+    @test e1 ≈ e4
+    @printf(" %12.8f\n", e4)
+    ket = Ket{N}(0)
+    # @btime e5 = expectation_value_dfs($O2, $generators, $angles, $ket, 
+    #                                     $stack_paulis, $stack_coeffs, $stack_depths)
+    alloc = @allocated e5 = expectation_value_dfs(O2, generators, angles, ket, 
+                                        stack_paulis, stack_coeffs, stack_depths)
+    @show alloc
+end
+
+
+# test3()

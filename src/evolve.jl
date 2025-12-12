@@ -1,5 +1,6 @@
 using PauliOperators
 using LinearAlgebra
+using DataStructures
 
 
 
@@ -117,13 +118,53 @@ function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
         accumated_error[idx] = err
         accumated_var_error[idx] = verr
 
-        if idx%(length(g)÷print_n_steps) == 0
-            @printf(" %4i E = %12.8f Var = %12.8f err = %12.8f verr = %12.8f\n", idx, e2, v2, err, verr)
-        end
+        # if idx%(length(g)÷print_n_steps) == 0
+        #     @printf(" %4i E = %12.8f Var = %12.8f err = %12.8f verr = %12.8f\n", idx, e2, v2, err, verr)
+        # end
         idx += 1
     end
     return Ot, energies, variances, accumated_error, accumated_var_error
 end
+
+function dfs(o::PauliBasis{N}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real}; ψ=Ket{N}(0)) where {N,T}
+    vcos = cos.(θ)
+    vsin = sin.(θ)
+  
+    # Operator, scale, Layer
+    stack = Stack{Tuple{PauliBasis{N},Float64,Int}}()  
+    push!(stack, (o,1.0,1)) 
+
+    n_gen = length(g)
+    expval = zero(ComplexF64)
+
+    while length(stack) > 0
+        
+        oi, hi, op_idx = pop!(stack)
+    
+        if op_idx == n_gen+1
+            expval += hi * expectation_value(oi, ψ) 
+        else
+            gi = g[op_idx]
+            
+            if PauliOperators.commute(gi,oi)
+                push!(stack, (oi, hi, op_idx+1))
+            else
+                # sin branch
+                tmp = gi*oi
+                or = PauliBasis(tmp)
+                hr = 1im * vsin[op_idx] * hi * PauliOperators.coeff(tmp)
+                push!(stack, (or, hr, op_idx+1))
+
+                # cos branch
+                hl = hi * vcos[op_idx]
+                push!(stack, (oi, hl, op_idx+1))
+            end
+        end
+    end
+
+    return expval
+end
+
 
 
 """
@@ -310,3 +351,4 @@ function get_1d_cluster_state_sequence(N)
     end
     return reverse(g), reverse(θ) 
 end
+

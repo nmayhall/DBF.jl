@@ -16,6 +16,7 @@ include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
 include("evolve.jl")
+include("depth_first_search.jl")
 include("schrodinger_picture.jl")
 
 
@@ -38,5 +39,6 @@ export Y_gate
 export Z_gate 
 export S_gate 
 export T_gate 
+export expectation_value_dfs
 
 end

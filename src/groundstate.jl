@@ -1,72 +1,29 @@
 using JLD2
 using TimerOutputs
 
-"""
-    optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
-
-Find the optimal θ that minimizes `<ψ|exp(iθ/2 G) O exp(-iθ/2 G)|ψ>`
-
-Return the optimal angle, as well as the continious function that maps θ to the expectation value.
-"""
-function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; verbose=1) where {N,T}
-    cg,ψg = G*ψ
-    Oeval = expectation_value(O, ψ)
-    OGeval = matrix_element(ψ', O, ψg)*cg
-    GOGeval = expectation_value(O, ψg)*cg'*cg
-    function cost(θ)
-        # Cost function for <ψ| U(θ)' O U(θ)|ψ>
-        return real(cos(θ/2)^2 * Oeval + sin(θ/2)^2 * GOGeval - 2im*cos(θ/2)*sin(θ/2)*OGeval)
-    end
-    
-    options = Optim.Options(
-        x_reltol = 1e-12, # A tight relative tolerance for changes in the solution vector
-        f_reltol = 1e-12, # A tight relative tolerance for changes in the objective function value
-        g_tol = 1e-10,    # A tighter absolute tolerance for the gradient
-    )
-    result = optimize(cost, 0.0, 2π)
-    # result = optimize(negative_cost, [0.0, π], Brent())
-    # result = optimize(negative_cost, [0.0, π], LBFGS())
-    θ = result.minimizer
-    # f_min = result.minimum
-
-    if Optim.iteration_limit_reached(result)
-        @show Optim.abs_tol(result), Optim.rel_tol(result)
-        @warn " minimization failed"
-    end
-
-    # Make sure bounds are respected
-    θ < 2π || throw(DomainError)
-    θ > 0 || throw(DomainError)
-
-    # if cost(θ) > cost(0)
-    #     @warn " optimal θ worse than zero" θ cost(θ)  cost(0) cost(θ) - cost(0) "resetting"
-    #     θ = 0
-    # end
-    stepsize = 1e-5
-    # idx = argmax([cost(i*π) for i in 0:stepsize:1-stepsize])
-    # θ = (idx-1) * stepsize * π
-    if cost(θ+stepsize) < cost(θ) || cost(θ-stepsize) < cost(θ)
-        @show cost(θ+stepsize) , cost(θ) , cost(θ-stepsize), θ
-        @show cost(θ+stepsize) - cost(θ)
-        @show cost(θ-stepsize) - cost(θ)
-        throw(ErrorException) 
-    end
-    
-    verbose < 1 || @show θ, sqrt(cost(θ))
-    return θ, cost
-    
-    # idx = argmin([cost(i*2π) for i in 0:stepsize:1-stepsize])
-    # # for i in 0:stepsize:1-stepsize
-    # #     @show i*2π, cost(i*2π)
-    # # end
-    # θ = (idx-1) * stepsize * 2π
-    # return θ, cost
-end
-
 
 
 """
-    dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
+    dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
+            n_body=1, 
+            initial_error = 0,
+            initial_norm_error = 0,
+            renormalize=false,
+            max_iter=10, 
+            verbose=1, 
+            conv_thresh=1e-3,
+            evolve_coeff_thresh=1e-6,
+            evolve_weight_thresh=N,
+            evolve_mweight_thresh=N,
+            grad_coeff_thresh=1e-6,
+            grad_weight_thresh=N,
+            grad_mweight_thresh=N,
+            energy_lowering_thresh=1e-6,
+            max_rots_per_grad = 100,
+            clifford_check = false,
+            compute_var_error = true,
+            compute_pt2_error = false,
+            checkfile=nothing) where {N,T}
     max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
     evolve_coeff_thresh=1e-12) where {N,T}
 
@@ -78,6 +35,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             n_body=1, 
             initial_error = 0,
             initial_norm_error = 0,
+            renormalize=false,
             max_iter=10, 
             verbose=1, 
             conv_thresh=1e-3,
@@ -270,7 +228,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             accumulated_pt2_error += pt2_2 - pt2_1
             accumulated_var_error += v2 - v1
             accumulated_norm_error += n2^2 - n1^2
-            
+
+            if renormalize
+                mul!(O, n1/n2)
+            end
+
             ecurr = e2 
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
@@ -349,6 +311,68 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     show(to) 
     println() 
     return out 
+end
+
+"""
+    optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
+
+Find the optimal θ that minimizes `<ψ|exp(iθ/2 G) O exp(-iθ/2 G)|ψ>`
+
+Return the optimal angle, as well as the continious function that maps θ to the expectation value.
+"""
+function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; verbose=1) where {N,T}
+    cg,ψg = G*ψ
+    Oeval = expectation_value(O, ψ)
+    OGeval = matrix_element(ψ', O, ψg)*cg
+    GOGeval = expectation_value(O, ψg)*cg'*cg
+    function cost(θ)
+        # Cost function for <ψ| U(θ)' O U(θ)|ψ>
+        return real(cos(θ/2)^2 * Oeval + sin(θ/2)^2 * GOGeval - 2im*cos(θ/2)*sin(θ/2)*OGeval)
+    end
+    
+    options = Optim.Options(
+        x_reltol = 1e-12, # A tight relative tolerance for changes in the solution vector
+        f_reltol = 1e-12, # A tight relative tolerance for changes in the objective function value
+        g_tol = 1e-10,    # A tighter absolute tolerance for the gradient
+    )
+    result = optimize(cost, 0.0, 2π)
+    # result = optimize(negative_cost, [0.0, π], Brent())
+    # result = optimize(negative_cost, [0.0, π], LBFGS())
+    θ = result.minimizer
+    # f_min = result.minimum
+
+    if Optim.iteration_limit_reached(result)
+        @show Optim.abs_tol(result), Optim.rel_tol(result)
+        @warn " minimization failed"
+    end
+
+    # Make sure bounds are respected
+    θ < 2π || throw(DomainError)
+    θ > 0 || throw(DomainError)
+
+    # if cost(θ) > cost(0)
+    #     @warn " optimal θ worse than zero" θ cost(θ)  cost(0) cost(θ) - cost(0) "resetting"
+    #     θ = 0
+    # end
+    stepsize = 1e-5
+    # idx = argmax([cost(i*π) for i in 0:stepsize:1-stepsize])
+    # θ = (idx-1) * stepsize * π
+    if cost(θ+stepsize) < cost(θ) || cost(θ-stepsize) < cost(θ)
+        @show cost(θ+stepsize) , cost(θ) , cost(θ-stepsize), θ
+        @show cost(θ+stepsize) - cost(θ)
+        @show cost(θ-stepsize) - cost(θ)
+        throw(ErrorException) 
+    end
+    
+    verbose < 1 || @show θ, sqrt(cost(θ))
+    return θ, cost
+    
+    # idx = argmin([cost(i*2π) for i in 0:stepsize:1-stepsize])
+    # # for i in 0:stepsize:1-stepsize
+    # #     @show i*2π, cost(i*2π)
+    # # end
+    # θ = (idx-1) * stepsize * 2π
+    # return θ, cost
 end
 
 function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N
