@@ -255,15 +255,21 @@ end
     O = PauliSum(Pauli(N,Z=[1]))
     O1 = deepcopy(O)
     O2 = PauliBasis(Pauli(N,Z=[1]))
-    
+    K1 = KetSum(N, T=ComplexF64)
+    K1[Ket{N}(0)] = 1.0
+
     @time O1, _ = evolve(O1, generators, angles, thresh=-1)
     e1 = expectation_value(O1, Ket{N}(0))
+    @time K2, _ = evolve(K1, generators, angles, thresh=-1)
+    e2 = expectation_value(O, K2)
     # @time e2 = DBF.dfs(O2, generators, angles, ψ = Ket{N}(0))
+    @printf("e1, e2: %12.8f %12.8f\n", e1, e2)
     @time e3 = expectation_value_dfs(O2, generators, angles, Ket{N}(0))
-    @printf("%12.8f %12.8f\n", e1, e3)
+    @printf("e1, e3: %12.8f %12.8f\n", e1, e3)
     # @printf("%12.8f %12.8f %12.8f\n", e1, e2, e3)
   
     @test e1 ≈ e3
+    @test e2 ≈ e3
     # Now pre-allocate - and check for repeated use (thinking of multithreading)
     n_gen = length(generators)
     stack_paulis = Vector{PauliBasis{N}}(undef, n_gen + 1)

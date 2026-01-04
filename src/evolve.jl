@@ -74,6 +74,25 @@ function evolve(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
 end
 
 
+function evolve!(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
+    _cos = cos(θ/2)
+    _sin = 1im*sin(θ/2)
+    GK = KetSum(N, T=ComplexF64)
+    for (k,c) in K
+        K[k] *= _cos
+        ci,ki = G*k
+        
+        tmp = get(GK,ki,0)
+        GK[ki] = tmp + _sin*c*ci
+    end
+    for (k,c) in GK 
+        tmp = get(K,k,0)
+        K[k] = c + tmp
+    end
+    return K 
+end
+
+
 function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
                 thresh=1e-3,
                 max_weight=N,
@@ -124,6 +143,65 @@ function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
         idx += 1
     end
     return Ot, energies, variances, accumated_error, accumated_var_error
+end
+
+
+"""
+    evolve(ψ::KetSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
+                thresh=1e-3,
+                max_weight=N,
+                verbose=1,
+                compute_var_err = false,
+                print_n_steps = 10,
+                ψ=Ket{N}(0)) where {N,T}
+# 
+exp(-iθ1/2 g1)exp(-iθ2/2 g2)...exp(-iθn/2 gn)ψ
+"""
+function evolve(ψ::KetSum{N,T}, gin::Vector{PauliBasis{N}}, θin::Vector{<:Real};
+                thresh=1e-3,
+                verbose=1,
+                O=PauliSum(N)) where {N,T}
+# 
+    g = reverse(gin)
+    θ = reverse(θin)
+    ng = length(g)
+    ng == length(θ) || throw(DimensionMismatch)
+# 
+    verbose < 1 || @printf(" Number of rotations: %i\n", ng)
+    energies = zeros(T,ng)
+    variances = zeros(T,ng)
+    accumated_error = zeros(T,ng)
+    accumated_var_error = zeros(T,ng)
+    v1 = 0
+    v2 = 0
+# 
+    err = 0
+    verr = 0
+    ψt = deepcopy(ψ)
+    idx = 1
+    for (gi, θi) in zip(g, θ)
+# 
+        evolve!(ψt, gi, θi)
+        e1 = expectation_value(O, ψt)
+        # if compute_var_err
+        #     v1 = variance(Ot, ψ)
+        # end 
+        DBF.coeff_clip!(ψt, thresh=thresh)
+        e2 = expectation_value(O, ψt)
+        # if compute_var_err
+        #     v2 = variance(Ot, ψ)
+        # end 
+# 
+        err += e2 - e1
+        verr += v2 - v1
+        energies[idx] = e2
+        variances[idx] = v2
+        accumated_error[idx] = err
+        accumated_var_error[idx] = verr
+# 
+        idx += 1
+    end
+    return ψt, energies, variances, accumated_error, accumated_var_error
 end
 
 function dfs(o::PauliBasis{N}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real}; ψ=Ket{N}(0)) where {N,T}
