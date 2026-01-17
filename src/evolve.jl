@@ -54,45 +54,6 @@ function evolve!(O::PauliSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
 end
 
 
-function evolve(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
-    _cos = cos(θ/2)
-    _sin = 1im*sin(θ/2)
-    K2 = KetSum(N, T=ComplexF64)
-    GK = KetSum(N, T=ComplexF64)
-    for (k,c) in K
-        K2[k] = c*_cos
-        ci,ki = G*k
-        
-        tmp = get(GK,ki,0)
-        GK[ki] = tmp + _sin*c*ci
-    end
-    for (k,c) in GK 
-        tmp = get(K2,k,0)
-        K2[k] = c + tmp
-    end
-    return K2 
-end
-
-
-function evolve!(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
-    _cos = cos(θ/2)
-    _sin = 1im*sin(θ/2)
-    GK = KetSum(N, T=ComplexF64)
-    for (k,c) in K
-        K[k] *= _cos
-        ci,ki = G*k
-        
-        tmp = get(GK,ki,0)
-        GK[ki] = tmp + _sin*c*ci
-    end
-    for (k,c) in GK 
-        tmp = get(K,k,0)
-        K[k] = c + tmp
-    end
-    return K 
-end
-
-
 function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
                 thresh=1e-3,
                 max_weight=N,
@@ -145,6 +106,49 @@ function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
     return Ot, energies, variances, accumated_error, accumated_var_error
 end
 
+
+
+# function evolve(K::KetSum{N, T}, G::PauliBasis{N}, θ::Real) where {N,T}
+#     _cos = cos(θ/2)
+#     _sin = 1im*sin(θ/2)
+#     K2 = KetSum(N, T=ComplexF64)
+#     GK = KetSum(N, T=ComplexF64)
+#     for (k,c) in K
+#         K2[k] = c*_cos
+#         ci,ki = G*k
+        
+#         tmp = get(GK,ki,0)
+#         GK[ki] = tmp + _sin*c*ci
+#     end
+#     for (k,c) in GK 
+#         tmp = get(K2,k,0)
+#         K2[k] = c + tmp
+#     end
+#     return K2 
+# end
+
+
+function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N,T}
+    _cos = cos(θ/2)
+    _sin = -1im*sin(θ/2)
+    GK = KetSum(N, T=ComplexF64)
+    for (k,c) in K
+        K[k] *= _cos
+        ci,ki = G*k
+        
+        tmp = get(GK,ki,0)
+        GK[ki] = tmp + _sin*c*ci
+    end
+    for (k,c) in GK 
+        tmp = get(K,k,0)
+        K[k] = c + tmp
+    end
+    return K 
+end
+function evolve(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N,T}
+    K2 = deepcopy(K)
+    return evolve!(K2, G, θ) 
+end
 
 """
     evolve(ψ::KetSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
@@ -279,9 +283,9 @@ function cnot(p::KetSum{N}, c::Int, t::Int) where N
     Xt = PauliBasis(Pauli(N,X=[t]))
     ZXct = PauliBasis(Pauli(N,Z=[c],X=[t]))
     out = deepcopy(p)
-    out = evolve(out, Zc, -π/2)
-    out = evolve(out, Xt, -π/2)
-    out = evolve(out, ZXct, π/2)
+    evolve!(out, Zc, -π/2)
+    evolve!(out, Xt, -π/2)
+    evolve!(out, ZXct, π/2)
     return exp(1im*π/4)*out
 end
 
@@ -321,9 +325,9 @@ function hadamard(p::Union{PauliSum{N}, KetSum{N}}, q::Int) where N
     out = deepcopy(p)
     Z = PauliBasis(Pauli(N,Z=[q]))
     X = PauliBasis(Pauli(N,X=[q]))
-    out = evolve(out, Z, π/2)
-    out = evolve(out, X, π/2)
-    out = evolve(out, Z, π/2)
+    evolve!(out, Z, π/2)
+    evolve!(out, X, π/2)
+    evolve!(out, Z, π/2)
     return -1im*out
 end
 

@@ -171,7 +171,7 @@ end
     N = 3
     Random.seed!(1)
     H = rand(PauliSum{N}, n_paulis=1)
-    ψ = KetSum(N)
+    ψ = KetSum(N, T=ComplexF64)
     ψ[Ket([0,0,0])] = 1
     # ψ[Ket([0,0,0])] = 1
     ψ = ψ * (1/norm(ψ))
