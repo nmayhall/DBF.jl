@@ -163,7 +163,7 @@ version = "1.6.0"
     StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.DBF]]
-deps = ["BenchmarkTools", "JLD2", "KrylovKit", "LinearAlgebra", "LinearMaps", "Optim", "OrderedCollections", "PauliOperators", "Polynomials", "Printf", "Random", "StatProfilerHTML", "TimerOutputs"]
+deps = ["BenchmarkTools", "DataStructures", "JLD2", "KrylovKit", "LinearAlgebra", "LinearMaps", "Optim", "OrderedCollections", "PauliOperators", "Polynomials", "Printf", "Random", "StatProfilerHTML", "TimerOutputs"]
 path = "."
 uuid = "05a0241d-af54-46e5-a412-7f757969bf0b"
 version = "1.0.0-DEV"
@@ -599,9 +599,7 @@ version = "2.8.3"
 
 [[deps.PauliOperators]]
 deps = ["BenchmarkTools", "LinearAlgebra", "Printf", "Random", "StaticArrays"]
-git-tree-sha1 = "bcfc0a060d81222df9325bf0263d7b157f2fab6d"
-repo-rev = "main"
-repo-url = "https://github.com/nmayhall/PauliOperators.jl"
+path = "../PauliOperators.jl"
 uuid = "be646426-f34c-4536-b1d4-a45a9633e6db"
 version = "2.0.0"
 

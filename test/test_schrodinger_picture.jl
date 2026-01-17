@@ -123,7 +123,7 @@ end
     end
     vvec = rand(length(basis))
     vvec = vvec/norm(vvec)
-    v = KetSum(basis)
+    v = KetSum(basis, T=ComplexF64)
     fill!(v,vvec,basis)
     s = DBF.subspace_matvec(pack_x_z(H),v)
     sfull = DBF.matvec(pack_x_z(H),v)

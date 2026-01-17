@@ -11,4 +11,6 @@ using Test
     include("test_groundstate_dbf.jl")
     include("test_adapt.jl")
     include("test_helpers.jl")
+    include("test_multiangle_opt.jl")
+    include("test_schrodinger_picture.jl")
 end

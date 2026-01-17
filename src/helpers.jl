@@ -39,41 +39,6 @@ function pauli_weight(Pb::Union{PauliBasis{N}, Pauli{N}}) where N
     return w
 end
 
-function inner_product(O1::PauliSum{N,T}, O2::PauliSum{N,T}) where {N,T}
-    out = T(0)
-    if length(O1) < length(O2)
-        for (p1,c1) in O1
-            if haskey(O2,p1)
-                out += c1'*O2[p1]
-            end
-        end
-    else
-        for (p2,c2) in O2
-            if haskey(O1,p2)
-                out += c2*O1[p2]'
-            end
-        end
-    end
-    return out
-end
-
-function inner_product(k1::KetSum{N,T}, k2::KetSum{N,T}) where {N,T}
-    out = T(0)
-    if length(k1) < length(k2)
-        for (p1,c1) in k1
-            if haskey(k2,p1)
-                out += c1'*k2[p1]
-            end
-        end
-    else
-        for (p2,c2) in k2
-            if haskey(k1,p2)
-                out += c2*k1[p2]'
-            end
-        end
-    end
-    return out
-end
 
 function largest_diag(ps::PauliSum{N,T}) where {N,T}
     argmax(kv -> abs(last(kv)), filter(p->p.first.x == 0, ps))
@@ -420,40 +385,6 @@ end
 
 
 
-
-function Base.sum!(O::KetSum{N,T}, k::KetSum{N}) where {N,T}
-    out = KetSum(N)
-    for (p,c) in O
-        c2,k2 = p*k
-        tmp = get(out, k2, 0.0)
-        out[k2] = tmp + c2*c
-    end
-    return out 
-end
-
-function Base.:*(O::PauliSum{N,T}, k::Ket{N}) where {N,T}
-    out = KetSum(N)
-    for (p,c) in O
-        c2,k2 = p*k
-        tmp = get(out, k2, 0.0)
-        out[k2] = tmp + c2*c
-    end
-    return out 
-end
-
-function PauliOperators.expectation_value(O::PauliSum, v::KetSum)
-    ev = 0
-    for (p,c) in O
-        for (k1,c1) in v
-            ev += expectation_value(p,k1)*c*c1'*c1
-            for (k2,c2) in v
-                k2 != k1 || continue
-                ev += matrix_element(k2', p, k1)*c*c2'*c1
-            end
-        end
-    end
-    return ev
-end
 
 function PauliOperators.expectation_value(O::XZPauliSum, v::KetSum{N,T}) where {N,T}
     ev = 0

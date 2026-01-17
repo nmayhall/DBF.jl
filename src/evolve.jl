@@ -128,7 +128,7 @@ end
 # end
 
 
-function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N,T}
+function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
     _cos = cos(θ/2)
     _sin = -1im*sin(θ/2)
     GK = KetSum(N, T=ComplexF64)
@@ -145,7 +145,7 @@ function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N,
     end
     return K 
 end
-function evolve(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N,T}
+function evolve(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
     K2 = deepcopy(K)
     return evolve!(K2, G, θ) 
 end
@@ -208,7 +208,7 @@ function evolve(ψ::KetSum{N,T}, gin::Vector{PauliBasis{N}}, θin::Vector{<:Real
     return ψt, energies, variances, accumated_error, accumated_var_error
 end
 
-function dfs(o::PauliBasis{N}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real}; ψ=Ket{N}(0)) where {N,T}
+function dfs(o::PauliBasis{N}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real}; ψ=Ket{N}(0)) where {N}
     vcos = cos.(θ)
     vsin = sin.(θ)
   

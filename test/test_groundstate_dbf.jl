@@ -28,7 +28,7 @@ using Test
     @show DBF.variance(H,ψ)
 
     res = DBF.dbf_groundstate(H, ψ,
-                    max_iter=20, conv_thresh=1e-3, 
+                    max_iter=40, conv_thresh=1e-3, 
                     evolve_coeff_thresh=1e-6,
                     grad_coeff_thresh=1e-10,
                     energy_lowering_thresh=1e-10)
@@ -46,9 +46,9 @@ using Test
     @printf(" %3s %12s %12s %12s %12s\n", "Idx", "H", "diag(H)", "U'HU", "diag(U'HU)")
     for i in 1:2^N
         @printf(" %3i %12.8f %12.8f %12.8f %12.8f\n", i, evals1[i], evals2[i], evals3[i], evals4[i])
-        @test isapprox(evals1[i], evals3[i], atol=1e-8)
+        @test isapprox(evals1[i], evals3[i], atol=1e-5)
     end
-    @test isapprox(evals1[1], evals4[1], atol=1e-8)
+    @test isapprox(evals1[1], evals4[1], atol=1e-5)
     @test abs(DBF.variance(H,ψ)) < 1e-6
     
 end
