@@ -133,9 +133,9 @@ end
     # return
     x0 = zeros(length(generators))
     options = Optim.Options(
-        x_reltol = 1e-12, # A tight relative tolerance for changes in the solution vector
-        f_reltol = 1e-12, # A tight relative tolerance for changes in the objective function value
-        g_tol = 1e-10,    # A tighter absolute tolerance for the gradient
+        x_reltol = 1e-8, # A tight relative tolerance for changes in the solution vector
+        f_reltol = 1e-8, # A tight relative tolerance for changes in the objective function value
+        g_tol = 1e-8,    # A tighter absolute tolerance for the gradient
         store_trace=true,
     )
     # result = optimize(Optim.only_fg!(fg!), zeros(length(generators)), LBFGS())
