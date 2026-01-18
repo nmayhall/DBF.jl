@@ -5,7 +5,7 @@ using PauliOperators
 using LinearAlgebra
 using DBF
 using BenchmarkTools
-
+using Optim
 
 function cost_function(Hin, generators, angles, ψ)
 
@@ -22,7 +22,7 @@ function cost_function(Hin, generators, angles, ψ)
 
     e = expectation_value(Hxz, ψt)
 
-    return e
+    return real(e)
 end
 function gradient(Hin, generators, angles, ψ)
 
@@ -99,6 +99,65 @@ end
         @test(abs(i-j) < 1e-5)
     end
 
+    f(θ) = cost_function(H, reverse(generators), reverse(θ), ket)
+    g(θ) = gradient(H, reverse(generators), reverse(θ), ket)
+
+    function fg!(F, G, x)
+        Hxz = pack_x_z(H)
+        length(generators) == length(x) || throw(DimensionMismatch)
+        ψt = deepcopy(ket)
+
+        for (gi, θi) in zip(generators, x)
+            evolve!(ψt, gi, θi)
+        end
+        e = expectation_value(Hxz, ψt)
+
+        if G !== nothing
+            length(G) == length(x) || throw(DimensionMismatch)
+            σt = DBF.matvec(Hxz, ψt)
+            gt = zeros(length(x))
+            op_idx = 1
+            for (gi, θi) in zip(reverse(generators), reverse(x))
+                gt[op_idx] = imag(matrix_element(σt, gi, ψt))
+                evolve!(ψt, gi, -θi)
+                evolve!(σt, gi, -θi)
+                op_idx += 1
+            end
+            G .= gt
+        end
+        if F !== nothing
+            return real(e) 
+        end
+    end
+
+    # return
+    x0 = zeros(length(generators))
+    options = Optim.Options(
+        x_reltol = 1e-12, # A tight relative tolerance for changes in the solution vector
+        f_reltol = 1e-12, # A tight relative tolerance for changes in the objective function value
+        g_tol = 1e-10,    # A tighter absolute tolerance for the gradient
+        store_trace=true,
+    )
+    # result = optimize(Optim.only_fg!(fg!), zeros(length(generators)), LBFGS())
+    # θ = result.minimizer
+    # f_min = result.minimum
+    # # result = optimize(f, g, LBFGS())
+    
+    result = optimize(f, (G, x) -> G .= g(x), x0, LBFGS(), options)
+    θ = result.minimizer
+    f_min = result.minimum
+
+    for t in Optim.trace(result)
+        @printf(" %4i %12.8f %12.8f\n", t.iteration, t.value, t.g_norm)
+    end
+
+
+    if Optim.iteration_limit_reached(result)
+        @show Optim.abs_tol(result), Optim.rel_tol(result)
+        @warn " minimization failed"
+    end
+
+    display(eigvals(Matrix(H)))
 end
 
 
