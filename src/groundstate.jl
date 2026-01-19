@@ -185,6 +185,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
                 end
             end
 
+            @printf(" %12.8f %s\n", θi, string(Gi)) 
             # #
             # # make sure energy lowering is large enough to warrent evolving
             # costi(0) - costi(θi) > energy_lowering_thresh || continue
@@ -273,7 +274,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %4i", n_rots)
-        verbose < 1 || @printf(" %8.4f", real(var_curr))
+        verbose < 1 || @printf(" %8.3e", real(var_curr))
         if compute_var_error
             verbose < 1 || @printf(" %12.8f", real(accumulated_var_error))
         end
@@ -477,7 +478,15 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
                 push!(grad_ops, p)
             end
         end
-        
+      
+        if norm(grad_vec) < conv_thresh
+            verbose < 1 || @printf(" Converged.\n")
+            break
+        end
+        if length(grad_ops) == 0
+            verbose < 1 || @printf(" Converged.\n")
+            break
+        end
         
         @timeit to "sort" sorted_idx = reverse(sortperm(abs.(grad_vec)))
         
@@ -488,8 +497,8 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
         n_rots = min(max_rots_per_grad, length(grad_ops))
         generators = grad_ops[sorted_idx[1:n_rots]]
     
-        f(θ) = cost_function(O, reverse(generators), reverse(θ), ψ)
-        g(θ) = gradient(O, reverse(generators), reverse(θ), ψ)
+        f(θ) = cost_function(O, generators, θ, ψ)
+        g(θ) = gradient(O, generators, θ, ψ)
 
         #
         # Now optimize the rotations
@@ -500,7 +509,7 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
             g_tol = 1e-8,    # A tighter absolute tolerance for the gradient
             store_trace=true,
         )
-        
+       
         x0 = zeros(length(generators))
         @timeit to "opt" result = optimize(f, (G, x) -> G .= g(x), x0, LBFGS(), options)
         θopt = result.minimizer
@@ -521,12 +530,10 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
         #
         # Now evolve H
         #
-        time += @elapsed for gi in 1:length(generators)
+        for (gi, θi) in zip(generators, θopt)
             
-            Gi = grad_ops[gi]
-            θi = θopt[gi]
-
-            @timeit to "evolve" evolve!(O,Gi,θi)
+            @timeit to "evolve" evolve!(O,gi,θi)
+            @printf(" %12.8f %s\n", θi, string(gi)) 
 
             n1 = norm(O)
             pt2_1 = 0
@@ -534,6 +541,7 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
             v1 = 0
             v2 = 0
             @timeit to "expval" e1 = expectation_value(O,ψ)
+            # @show e1
             if compute_var_error
                 @timeit to "variance" v1 = variance(O,ψ)
             end
@@ -570,9 +578,6 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
             end
 
             ecurr = e2 
-            verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
-            verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
-            verbose < 2 || @printf("\n")
             flush(stdout)
             
             push!(out["accumulated_error"], real(accumulated_error))
@@ -582,17 +587,14 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
                 push!(out["variances"], v2)
             end
             push!(out["norms"], n2)
-            push!(out["generators"], Gi) 
+            push!(out["generators"], gi) 
             push!(out["angles"], θi)
 
         end
   
+        ecurr = result.minimum
 
-
-        verbose < 2 || println("\n Compute PT2 correction")
         @timeit to "pt2" e0, e2 = pt2(O, ψ)
-        verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
-        
         @timeit to "variance" var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
@@ -607,7 +609,7 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %4i", n_rots)
-        verbose < 1 || @printf(" %8.4f", real(var_curr))
+        verbose < 1 || @printf(" %8.3e", real(var_curr))
         if compute_var_error
             verbose < 1 || @printf(" %12.8f", real(accumulated_var_error))
         end
@@ -626,10 +628,6 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
     
         
-        if norm(grad_vec) < conv_thresh
-            verbose < 1 || @printf(" Converged.\n")
-            break
-        end
 
         if iter == max_iter
             verbose < 1 || @printf(" Not Converged.\n")
@@ -988,7 +986,7 @@ function cost_function(Hin, generators, angles, ψin)
 
     ψt = deepcopy(ψ)
 
-    for (gi, θi) in zip(generators, angles)
+    for (gi, θi) in zip(reverse(generators), reverse(angles))
         evolve!(ψt, gi, θi)
     end
 
@@ -1006,7 +1004,8 @@ function gradient(Hin, generators, angles, ψin)
 
     ψt = deepcopy(ψ)
 
-    for (gi, θi) in zip(generators, angles)
+    # for (gi, θi) in zip(generators, angles)
+    for (gi, θi) in zip(reverse(generators), reverse(angles))
         evolve!(ψt, gi, θi)
     end
 
@@ -1018,7 +1017,8 @@ function gradient(Hin, generators, angles, ψin)
     σt = DBF.matvec(Hxz, ψt)
     gt = zeros(length(angles))
     op_idx = 1
-    for (gi, θi) in zip(reverse(generators), reverse(angles))
+    # for (gi, θi) in zip(reverse(generators), reverse(angles))
+    for (gi, θi) in zip(generators, angles)
         gt[op_idx] = imag(matrix_element(σt, gi, ψt))
         evolve!(ψt, gi, -θi)
         evolve!(σt, gi, -θi)

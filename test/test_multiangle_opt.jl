@@ -99,36 +99,37 @@ end
         @test(abs(i-j) < 1e-5)
     end
 
+    for i in 1:5
     f(θ) = cost_function(H, reverse(generators), reverse(θ), ket)
     g(θ) = gradient(H, reverse(generators), reverse(θ), ket)
 
-    function fg!(F, G, x)
-        Hxz = pack_x_z(H)
-        length(generators) == length(x) || throw(DimensionMismatch)
-        ψt = deepcopy(ket)
+    # function fg!(F, G, x)
+    #     Hxz = pack_x_z(H)
+    #     length(generators) == length(x) || throw(DimensionMismatch)
+    #     ψt = deepcopy(ket)
 
-        for (gi, θi) in zip(generators, x)
-            evolve!(ψt, gi, θi)
-        end
-        e = expectation_value(Hxz, ψt)
+    #     for (gi, θi) in zip(generators, x)
+    #         evolve!(ψt, gi, θi)
+    #     end
+    #     e = expectation_value(Hxz, ψt)
 
-        if G !== nothing
-            length(G) == length(x) || throw(DimensionMismatch)
-            σt = DBF.matvec(Hxz, ψt)
-            gt = zeros(length(x))
-            op_idx = 1
-            for (gi, θi) in zip(reverse(generators), reverse(x))
-                gt[op_idx] = imag(matrix_element(σt, gi, ψt))
-                evolve!(ψt, gi, -θi)
-                evolve!(σt, gi, -θi)
-                op_idx += 1
-            end
-            G .= gt
-        end
-        if F !== nothing
-            return real(e) 
-        end
-    end
+    #     if G !== nothing
+    #         length(G) == length(x) || throw(DimensionMismatch)
+    #         σt = DBF.matvec(Hxz, ψt)
+    #         gt = zeros(length(x))
+    #         op_idx = 1
+    #         for (gi, θi) in zip(reverse(generators), reverse(x))
+    #             gt[op_idx] = imag(matrix_element(σt, gi, ψt))
+    #             evolve!(ψt, gi, -θi)
+    #             evolve!(σt, gi, -θi)
+    #             op_idx += 1
+    #         end
+    #         G .= gt
+    #     end
+    #     if F !== nothing
+    #         return real(e) 
+    #     end
+    # end
 
     # return
     x0 = zeros(length(generators))
@@ -157,7 +158,16 @@ end
         @warn " minimization failed"
     end
 
-    display(eigvals(Matrix(H)))
+
+    @time Ht, _ = evolve(H, generators, θ, thresh=-1)
+    e1 = expectation_value(Ht, ket)
+    @time K2, _ = evolve(ket, generators, θ, thresh=-1)
+    e2 = expectation_value(H, K2)
+
+    @printf(" <Ht> = %12.8f <t|H|t> = %12.8f\n", real(e1), real(e2))
+    H = Ht
+    # display(eigvals(Matrix(H)))
+end
 end
 
 
