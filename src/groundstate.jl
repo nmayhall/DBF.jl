@@ -646,6 +646,7 @@ function dbf_groundstate_multiangle(Oin::PauliSum{N,T}, ψ::Ket{N};
     return out 
 end
 
+
 """
     optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
 
