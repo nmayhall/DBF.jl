@@ -5,6 +5,7 @@ using Test
 
 @testset "DBF.jl" begin
 
+    include("test_truncations.jl")
     include("test_theta_opt.jl")
     include("test_evolve.jl")
     include("test_diag_dbf.jl")

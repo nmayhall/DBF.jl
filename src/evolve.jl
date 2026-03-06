@@ -74,10 +74,9 @@ end
 
 
 function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
-                thresh=1e-3,
-                max_weight=N,
+                evolve_truncation::TruncationStrategy = CompositeTruncation(CoeffTruncation(1e-3), WeightTruncation(N)),
+                correction::CorrectionAccumulator = NoCorrection(),
                 verbose=1,
-                compute_var_err = false,
                 print_n_steps = 10,
                 ψ=Ket{N}(0)) where {N,T}
 
@@ -86,43 +85,22 @@ function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
 
     verbose < 1 || @printf(" Number of rotations: %i\n", ng)
     energies = zeros(T,ng)
-    variances = zeros(T,ng)
-    accumated_error = zeros(T,ng)
-    accumated_var_error = zeros(T,ng)
-    v1 = 0
-    v2 = 0
 
-    err = 0
-    verr = 0
     Ot = deepcopy(O0)
     idx = 1
     for (gi, θi) in zip(g, θ)
 
         Ot = DBF.evolve(Ot, gi, θi)
-        e1 = expectation_value(Ot, ψ)
-        if compute_var_err
-            v1 = variance(Ot, ψ)
-        end 
-        DBF.coeff_clip!(Ot, thresh=thresh)
-        DBF.weight_clip!(Ot, max_weight)
-        e2 = expectation_value(Ot, ψ)
-        if compute_var_err
-            v2 = variance(Ot, ψ)
-        end 
+        truncate!(Ot, evolve_truncation, correction)
 
-        err += e2 - e1
-        verr += v2 - v1
-        energies[idx] = e2
-        variances[idx] = v2
-        accumated_error[idx] = err
-        accumated_var_error[idx] = verr
+        energies[idx] = real(expectation_value(Ot, ψ))
 
         if idx%(length(g)÷print_n_steps) == 0
-            @printf(" %4i E = %12.8f Var = %12.8f err = %12.8f verr = %12.8f\n", idx, e2, v2, err, verr)
+            @printf(" %4i E = %12.8f err = %12.8f\n", idx, energies[idx], _get_accumulated_energy(correction))
         end
         idx += 1
     end
-    return Ot, energies, variances, accumated_error, accumated_var_error
+    return Ot, energies, correction
 end
 
 

@@ -274,6 +274,22 @@ end
 
 
 
+function l1_norm(O::PauliSum)
+    s = 0.0
+    for (_, c) in O
+        s += abs(c)
+    end
+    return s
+end
+
+function l4_norm(O::PauliSum)
+    s = 0.0
+    for (_, c) in O
+        s += abs(c)^4
+    end
+    return s^(1/4)
+end
+
 function get_weight_counts(O::PauliSum{N}) where N
     counts = zeros(Int, N+1)
     for (p,c) in O

@@ -95,9 +95,9 @@ end
 
 
 
-function dbf_disentangle(Oin::PauliSum{N,T}, M::Int; 
+function dbf_disentangle(Oin::PauliSum{N,T}, M::Int;
     max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-    evolve_coeff_thresh=1e-12) where {N,T}
+    evolve_truncation::TruncationStrategy = CoeffTruncation(1e-12)) where {N,T}
     O = deepcopy(Oin)
     generators = Vector{PauliBasis}([])
     angles = Vector{Float64}([])
@@ -128,7 +128,7 @@ function dbf_disentangle(Oin::PauliSum{N,T}, M::Int;
         coeff, G = findmax(v -> abs(v), com) 
         θi, costi = optimize_theta_disentangle(O,G,M,stepsize=.000001, verbose=0)
         O = evolve(O,G,θi)
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
+        truncate!(O, evolve_truncation)
 
         norm_new = norm(q_space(O, M))
         verbose < 1 || @printf(" %6i %12.8f %12.8f %12.8f %12i", iter, θi, norm(O), norm_new, length(O))

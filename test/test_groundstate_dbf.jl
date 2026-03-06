@@ -28,14 +28,30 @@ using Test
     @show DBF.variance(H,ψ)
 
     res = DBF.dbf_groundstate(H, ψ,
-                    max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-6,
+                    max_iter=20, conv_thresh=1e-3,
+                    evolve_truncation=CoeffTruncation(1e-6),
+                    grad_truncation=CoeffTruncation(1e-10),
                     grad_coeff_thresh=1e-10,
                     energy_lowering_thresh=1e-10)
   
-    H = res["hamiltonian"]
-    gi = res["generators"]
-    θi = res["angles"]
+    H = res.hamiltonian
+    gi = res.generators
+    θi = res.angles
+
+    # Verify new tracked quantities are populated
+    @test length(res.energies) > 0
+    @test length(res.op_lengths) == length(res.energies)
+    @test length(res.l1_norms) == length(res.energies)
+    @test length(res.l2_norms) == length(res.energies)
+    @test length(res.l4_norms) == length(res.energies)
+    @test length(res.entropies) == length(res.energies)
+    @test length(res.acc_energy) == length(res.energies)
+    @test length(res.acc_variance) == length(res.energies)
+
+    @test length(res.energies_per_grad) > 0
+    @test length(res.op_lengths_per_grad) == length(res.energies_per_grad)
+    @test length(res.pt2_per_grad) == length(res.energies_per_grad)
+    @test length(res.variance_per_grad) == length(res.energies_per_grad)
 
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
@@ -50,7 +66,7 @@ using Test
     end
     @test isapprox(evals1[1], evals4[1], atol=1e-7)
     @test abs(DBF.variance(H,ψ)) < 1e-6
-    
+
 end
 @testset "pt2" begin 
     N = 6 
@@ -63,15 +79,16 @@ end
     @show norm(H)^2, norm(diag(H))^2, norm(offdiag(H))^2
     @show e_exact = minimum(real(eigvals(Matrix(H))))
     @show e_ref = expectation_value(H,ψ) 
-    res = DBF.dbf_groundstate(H, ψ, 
-                    max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-6,
+    res = DBF.dbf_groundstate(H, ψ,
+                    max_iter=20, conv_thresh=1e-3,
+                    evolve_truncation=CoeffTruncation(1e-6),
+                    grad_truncation=CoeffTruncation(1e-3),
                     grad_coeff_thresh=1e-3,
                     energy_lowering_thresh=1e-3)
    
-    H = res["hamiltonian"]
-    gi = res["generators"]
-    θi = res["angles"]
+    H = res.hamiltonian
+    gi = res.generators
+    θi = res.angles
 
     # H = deepcopy(H0)
     # Compute PT2 explicitly with matrix

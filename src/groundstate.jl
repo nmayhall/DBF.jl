@@ -1,6 +1,86 @@
 using JLD2
 using TimerOutputs
 
+
+# ============================================================
+# DBFResult — typed container for all tracked quantities
+# ============================================================
+
+mutable struct DBFResult{N}
+    # Final objects
+    hamiltonian::PauliSum{N}
+    state::Ket{N}
+    correction::CorrectionAccumulator
+
+    # Per-rotation traces
+    energies::Vector{Float64}
+    op_lengths::Vector{Int}
+    l1_norms::Vector{Float64}
+    l2_norms::Vector{Float64}
+    l4_norms::Vector{Float64}
+    entropies::Vector{Float64}
+    acc_energy::Vector{Float64}
+    acc_variance::Vector{Float64}
+    generators::Vector{PauliBasis{N}}
+    angles::Vector{Float64}
+
+    # Per-gradient traces
+    energies_per_grad::Vector{Float64}
+    op_lengths_per_grad::Vector{Int}
+    l1_norms_per_grad::Vector{Float64}
+    l2_norms_per_grad::Vector{Float64}
+    l4_norms_per_grad::Vector{Float64}
+    entropies_per_grad::Vector{Float64}
+    acc_energy_per_grad::Vector{Float64}
+    acc_variance_per_grad::Vector{Float64}
+    pt2_per_grad::Vector{Float64}
+    variance_per_grad::Vector{Float64}
+end
+
+function DBFResult(O::PauliSum{N}, ψ::Ket{N}, correction::CorrectionAccumulator) where N
+    DBFResult{N}(
+        deepcopy(O), ψ, correction,
+        Float64[], Int[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+        PauliBasis{N}[], Float64[],
+        Float64[], Int[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+        Float64[], Float64[]
+    )
+end
+
+function snapshot!(result::DBFResult, O::PauliSum, correction::CorrectionAccumulator; per_grad=false)
+    e   = real(expectation_value(O, result.state))
+    len = length(O)
+    l1  = l1_norm(O)
+    l2  = norm(O)
+    l4  = l4_norm(O)
+    ent = entropy(O)
+    ae  = real(_get_accumulated_energy(correction))
+    av  = real(_get_accumulated_variance(correction))
+
+    push!(result.energies, e)
+    push!(result.op_lengths, len)
+    push!(result.l1_norms, l1)
+    push!(result.l2_norms, l2)
+    push!(result.l4_norms, l4)
+    push!(result.entropies, ent)
+    push!(result.acc_energy, ae)
+    push!(result.acc_variance, av)
+
+    if per_grad
+        push!(result.energies_per_grad, e)
+        push!(result.op_lengths_per_grad, len)
+        push!(result.l1_norms_per_grad, l1)
+        push!(result.l2_norms_per_grad, l2)
+        push!(result.l4_norms_per_grad, l4)
+        push!(result.entropies_per_grad, ent)
+        push!(result.acc_energy_per_grad, ae)
+        push!(result.acc_variance_per_grad, av)
+    end
+
+    return e
+end
+
+
 """
     optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; stepsize=.001, verbose=1) where {N,T}
 
@@ -75,113 +155,65 @@ d/dt H = [H,[H,P]]
 where P = |000...><000...| = equal sum of all diagonal paulis
 """
 function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
-            n_body=1, 
-            initial_error = 0,
-            initial_norm_error = 0,
-            max_iter=10, 
-            verbose=1, 
+            n_body=1,
+            max_iter=10,
+            verbose=1,
             conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-6,
-            evolve_weight_thresh=N,
-            evolve_mweight_thresh=N,
+            evolve_truncation::TruncationStrategy = CoeffTruncation(1e-6),
+            grad_truncation::TruncationStrategy = CoeffTruncation(1e-6),
             grad_coeff_thresh=1e-6,
-            grad_weight_thresh=N,
-            grad_mweight_thresh=N,
+            correction::CorrectionAccumulator = EnergyVarianceCorrection(ψ),
             energy_lowering_thresh=1e-6,
             max_rots_per_grad = 100,
             clifford_check = false,
-            compute_var_error = true,
-            compute_pt2_error = false,
             checkfile=nothing) where {N,T}
        
 
     O = deepcopy(Oin)
-    generators = Vector{PauliBasis{N}}([])
-    angles = Vector{Float64}([])
 
     to = TimerOutput()
 
-    ecurr = expectation_value(O, ψ) 
-    accumulated_error = initial_error 
-    accumulated_pt2_error = 0 
-    accumulated_var_error = 0 
-    accumulated_norm_error = initial_norm_error 
-        
     verbose < 2 || println("\n Compute PT2 correction")
     @show e0, e2 = pt2(O, ψ)
-   
-    # 
-    # Initialize data collection
-    out = Dict()
 
-    out["state"] = ψ
-    out["H0"] = Oin
-    out["energies"] = Vector{Float64}([])
-    out["variances"] = Vector{Float64}([])
-    out["accumulated_error"] = Vector{Float64}([])
-    out["accumulated_var_error"] = Vector{Float64}([])
-    out["norms"] = Vector{Float64}([])
-    out["generators"] = Vector{PauliBasis{N}}([])
-    out["angles"] = Vector{Float64}([])
-    
-    out["energies_per_grad"] = Vector{Float64}([])
-    out["accumulated_error_per_grad"] = Vector{Float64}([])
-    out["norms_per_grad"] = Vector{Float64}([])
-    out["pt2_per_grad"] = Vector{Float64}([])
-    out["variance_per_grad"] = Vector{Float64}([])
-    
-    push!(out["energies"], ecurr)
-    push!(out["variances"], variance(O,ψ))
-    push!(out["accumulated_error"], initial_error)
-    push!(out["accumulated_var_error"], initial_error)
-    push!(out["norms"], norm(O))
-    
-    push!(out["energies_per_grad"], ecurr)
-    push!(out["accumulated_error_per_grad"], initial_error)
-    push!(out["pt2_per_grad"], real(e2))
-    push!(out["variance_per_grad"], variance(O,ψ))
-    push!(out["norms_per_grad"], norm(O))
-   
+    # Initialize result container
+    result = DBFResult(Oin, ψ, correction)
+
+    # Initial snapshot (per-rotation + per-gradient)
+    snapshot!(result, O, correction, per_grad=true)
+    push!(result.pt2_per_grad, real(e2))
+    push!(result.variance_per_grad, real(variance(O, ψ)))
+
     verbose < 1 || @printf(" %6s", "Iter")
     verbose < 1 || @printf(" %14s", "<ψ|H|ψ>")
-    verbose < 1 || @printf(" %12s", "total_error")
-    if compute_pt2_error
-        verbose < 1 || @printf(" %12s", "PT_error")
-    end
+    verbose < 1 || @printf(" %12s", "AccE")
+    verbose < 1 || @printf(" %12s", "AccVar")
     verbose < 1 || @printf(" %10s", "E(2)")
-    verbose < 1 || @printf(" %12s", "norm_err")
     verbose < 1 || @printf(" %9s", "norm(G)")
     verbose < 1 || @printf(" %10s", "len([H,Z])")
     verbose < 1 || @printf(" %8s", "len(G)")
     verbose < 1 || @printf(" %8s", "len(H)")
+    verbose < 1 || @printf(" %10s", "l1")
+    verbose < 1 || @printf(" %10s", "l4")
     verbose < 1 || @printf(" %4s", "#Rot")
     verbose < 1 || @printf(" %8s", "variance")
-    if compute_var_error
-        verbose < 1 || @printf(" %12s", "var_error")
-    end
     verbose < 1 || @printf(" %8s", "Entropy")
     verbose < 1 || @printf(" %8s", "Time")
     verbose < 1 || @printf("\n")
 
     P = create_0_projector(N, n_body)
-    
+
     for iter in 1:max_iter
-        
+
         time = 0
-       
+
         # Create the iteration dependent pool
-        time += @elapsed @timeit to "commutator" G = commutator(P,O)  
-        
+        time += @elapsed @timeit to "commutator" G = commutator(P,O)
+
         len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
-        @timeit to "clip" coeff_clip!(G, thresh=grad_coeff_thresh)
-        if grad_weight_thresh < N
-            @timeit to "wclip" weight_clip!(G, grad_weight_thresh)
-        end
-        if grad_mweight_thresh < N
-            @timeit to "mclip" majorana_weight_clip!(G, grad_mweight_thresh)
-        end
-       
+        @timeit to "grad_truncate" truncate!(G, grad_truncation)
+
         if length(G) == 0
             @warn " No search direction found. Increase decrease `grad_coeff_thresh`."
             break
@@ -189,36 +221,32 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
 
         grad_vec = Vector{Float64}([])
         grad_ops = Vector{PauliBasis{N}}([])
-      
+
         @timeit to "pack" xzO = pack_x_z(O)
         @timeit to "matvec" σv = matvec(xzO, ψ)
 
         # Compute gradient vector
-        time += @elapsed @timeit to "gradient" for (p,c) in G 
-            # dyad = (ψ * ψ') * p'
-            # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
+        time += @elapsed @timeit to "gradient" for (p,c) in G
             ci, σ = p*ψ
             gi = 2*real(get(σv, σ, T(0)) * c * ci)
-            # gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
-            # @show expectation_value(O*p*c - c*p*O, ψ)
             if abs(gi) > grad_coeff_thresh
                 push!(grad_vec, gi)
                 push!(grad_ops, p)
             end
         end
-        
-        
+
+
         @timeit to "sort" sorted_idx = reverse(sortperm(abs.(grad_vec)))
-        
+
         verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
         time += @elapsed for gi in sorted_idx
-            
+
             Gi = grad_ops[gi]
             @timeit to "opt_theta" θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
-         
+
             if clifford_check
                 # See if we can do a cheap clifford operation
                 if costi(0) - costi(π / 2) > energy_lowering_thresh
@@ -226,67 +254,21 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
                 end
             end
 
-            # #
-            # # make sure energy lowering is large enough to warrent evolving
-            # costi(0) - costi(θi) > energy_lowering_thresh || continue
-
-
-            # O = evolve(O,G,θi)
             @timeit to "evolve" evolve!(O,Gi,θi)
 
-            n1 = norm(O)
-            pt2_1 = 0
-            pt2_2 = 0
-            v1 = 0
-            v2 = 0
-            @timeit to "expval" e1 = expectation_value(O,ψ)
-            if compute_var_error
-                @timeit to "variance" v1 = variance(O,ψ)
-            end
-            if compute_pt2_error
-                @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
-            end
-            
             #
-            # Truncate operator
-            @timeit to "clip" coeff_clip!(O, thresh=evolve_coeff_thresh)
-            if evolve_weight_thresh < N
-                @timeit to "wclip" weight_clip!(O, evolve_weight_thresh)
-            end
-            if evolve_mweight_thresh < N
-                @timeit to "mclip" majorana_weight_clip!(O, evolve_mweight_thresh)
-            end
-            # weight_clip!(O, evolve_weight_thresh)
-            @timeit to "expval" e2 = expectation_value(O,ψ)
-            n2 = norm(O)
-            if compute_pt2_error
-                @timeit to "pt2" _, pt2_2 = pt2(O, ψ)
-            end
-            if compute_var_error
-                @timeit to "variance" v2 = variance(O,ψ)
-            end
+            # Truncate operator and accumulate corrections
+            @timeit to "truncate" truncate!(O, evolve_truncation, correction)
 
-            accumulated_error += e2 - e1
-            accumulated_pt2_error += pt2_2 - pt2_1
-            accumulated_var_error += v2 - v1
-            accumulated_norm_error += n2^2 - n1^2
-            
-            ecurr = e2 
+            ecurr = snapshot!(result, O, correction)
+            push!(result.generators, Gi)
+            push!(result.angles, θi)
+
             verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
             verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
             verbose < 2 || @printf("\n")
             n_rots += 1
             flush(stdout)
-            
-            push!(out["accumulated_error"], real(accumulated_error))
-            push!(out["accumulated_var_error"], real(accumulated_var_error))
-            push!(out["energies"], ecurr)
-            if compute_var_error
-                push!(out["variances"], v2)
-            end
-            push!(out["norms"], n2)
-            push!(out["generators"], Gi) 
-            push!(out["angles"], θi)
 
             if n_rots >= max_rots_per_grad
                 break
@@ -295,40 +277,36 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 2 || println("\n Compute PT2 correction")
         @timeit to "pt2" e0, e2 = pt2(O, ψ)
         verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
-        
+
         @timeit to "variance" var_curr = variance(O,ψ)
+        ecurr = snapshot!(result, O, correction, per_grad=true)
+        push!(result.pt2_per_grad, real(e2))
+        push!(result.variance_per_grad, real(var_curr))
+
+        acc_energy = _get_accumulated_energy(correction)
+        acc_var = _get_accumulated_variance(correction)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
-        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
-        if compute_pt2_error
-            verbose < 1 || @printf(" %12.8f", real(accumulated_pt2_error))
-        end
+        verbose < 1 || @printf(" %12.8f", real(acc_energy))
+        verbose < 1 || @printf(" %12.8f", real(acc_var))
         verbose < 1 || @printf(" %10.6f", real(e2))
-        verbose < 1 || @printf(" %12.8f", accumulated_norm_error)
         verbose < 1 || @printf(" %8.3e", norm(grad_vec))
         verbose < 1 || @printf(" %10i", len_comm)
         verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
+        verbose < 1 || @printf(" %10.4f", l1_norm(O))
+        verbose < 1 || @printf(" %10.4f", l4_norm(O))
         verbose < 1 || @printf(" %4i", n_rots)
         verbose < 1 || @printf(" %8.4f", real(var_curr))
-        if compute_var_error
-            verbose < 1 || @printf(" %12.8f", real(accumulated_var_error))
-        end
         verbose < 1 || @printf(" %8.4f", entropy(O))
         verbose < 1 || @printf(" %8.2f", time)
         verbose < 1 || @printf("\n")
-        
-        push!(out["pt2_per_grad"], real(e2))
-        push!(out["accumulated_error_per_grad"], accumulated_error)
-        push!(out["energies_per_grad"], ecurr)
-        push!(out["variance_per_grad"], var_curr)
-        push!(out["norms_per_grad"], norm(O))
 
         if checkfile !== nothing
-            @save "$(checkfile).jld2" O out
+            @save "$(checkfile).jld2" O result
         end
-    
-        
+
+
         if norm(grad_vec) < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
             break
@@ -337,18 +315,18 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         if iter == max_iter
             verbose < 1 || @printf(" Not Converged.\n")
         end
-        
+
         if n_rots == 0
-            @warn """ No search directions found. 
+            @warn """ No search directions found.
                     Tighten `grad_coeff_thresh` or `energy_lowering_thresh`"""
             break
         end
-        
+
     end
-    out["hamiltonian"] = O 
-    show(to) 
-    println() 
-    return out 
+    result.hamiltonian = O
+    show(to)
+    println()
+    return result
 end
 
 function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N
@@ -408,30 +386,22 @@ d/dt H = [H,[H,P]]
 
 where P = |000...><000...| = equal sum of all diagonal paulis
 """
-function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N}; 
+function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
             n_body = 2,
             max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-12,
-            evolve_weight_thresh=nothing,
+            evolve_truncation::TruncationStrategy = CoeffTruncation(1e-12),
             grad_coeff_thresh=1e-8,
-            grad_weight_thresh=nothing,
+            grad_truncation::TruncationStrategy = CoeffTruncation(1e-8),
+            correction::CorrectionAccumulator = EnergyCorrection(ψ),
             stepsize = .01) where {N,T}
-        
-    if grad_weight_thresh === nothing
-        grad_weight_thresh = N
-    end
-    if evolve_weight_thresh === nothing
-        evolve_weight_thresh = N
-    end
 
     O = deepcopy(Oin)
     generators = Vector{PauliBasis{N}}([])
     angles = Vector{Float64}([])
     norm_old = norm(offdiag(O))
 
-    ecurr = expectation_value(O, ψ) 
-    accumulated_error = 0
-   
+    ecurr = expectation_value(O, ψ)
+
     # Define the source operator that is an n-body approximation to |00><00|
     S = create_0_projector(N,n_body)
     @printf(" Number of terms in approx projector: %i\n", length(S))
@@ -456,8 +426,7 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
         # pool = max_of_commutator2(S, O, n_top=search_n_top)
         pool = S*O - O*S
         # pool = commute_with_Zs(O)
-        coeff_clip!(pool, thresh=grad_coeff_thresh)
-        # weight_clip!(pool, grad_weight_thresh)
+        truncate!(pool, grad_truncation)
         # pool = find_top_k(pool, search_n_top)
        
         if length(pool) == 0
@@ -517,12 +486,7 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
             
 
             O = evolve(O,gi,θi*stepsize)
-            e1 = expectation_value(O,ψ)
-            coeff_clip!(O, thresh=evolve_coeff_thresh)
-            weight_clip!(O, evolve_weight_thresh)
-            e2 = expectation_value(O,ψ)
-
-            accumulated_error += e2 - e1
+            truncate!(O, evolve_truncation, correction)
             # if norm_new - costi(θi) > 1e-12
             #     @show norm_new - costi(θi)
             #     throw(ErrorException)
@@ -545,7 +509,7 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %12.8f", ecurr)
         verbose < 1 || @printf(" %12.8f", norm_new)
-        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", real(_get_accumulated_energy(correction)))
         verbose < 1 || @printf(" %12.8f", real(e2))
         verbose < 1 || @printf(" %12.8f", norm(O))
         verbose < 1 || @printf(" %8i", length(pool))

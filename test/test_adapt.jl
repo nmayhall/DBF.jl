@@ -30,9 +30,9 @@ using Test
     
     @show DBF.variance(H,ψ)
 
-    H, gi, θi = adapt(H, pool, ψ, 
-                    max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-4)
+    H, gi, θi = adapt(H, pool, ψ,
+                    max_iter=20, conv_thresh=1e-3,
+                    evolve_truncation=CoeffTruncation(1e-4))
    
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
