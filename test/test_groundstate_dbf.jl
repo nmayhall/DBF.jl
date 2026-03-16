@@ -10,7 +10,7 @@ using Test
     N = 3 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, 1, 2, 3, z=.1)
-    DBF.coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
     H0 = deepcopy(H)
 
     kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
@@ -25,7 +25,7 @@ using Test
     evals1 = eigvals(Matrix(H))
     evals2 = eigvals(Matrix(diag(H)))
     
-    @show DBF.variance(H,ψ)
+    @show variance(H,ψ)
 
     res = DBF.dbf_groundstate(H, ψ,
                     max_iter=20, conv_thresh=1e-3, 
@@ -49,14 +49,14 @@ using Test
         @test isapprox(evals1[i], evals3[i], atol=1e-7)
     end
     @test isapprox(evals1[1], evals4[1], atol=1e-7)
-    @test abs(DBF.variance(H,ψ)) < 1e-6
+    @test abs(variance(H,ψ)) < 1e-6
     
 end
 @testset "pt2" begin 
     N = 6 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, -1, -2, -3, x=.3)
-    DBF.coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
     kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
     ψ = Ket{N}(kidx)
     H0 = deepcopy(H)
@@ -100,7 +100,7 @@ end
     
     # CEPA?
     basis_dict = H*ψ
-    DBF.coeff_clip!(basis_dict, thresh=1e-2)
+    coeff_clip!(basis_dict, 1e-2)
     @show length(basis_dict)
     
     basis = Vector{Ket{N}}([ψ])

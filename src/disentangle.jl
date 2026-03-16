@@ -120,15 +120,15 @@ function dbf_disentangle(Oin::PauliSum{N,T}, M::Int;
         # source = diag(O) + local_Z
         source = p_space(O, M)
         com = O*source - source*O
-        coeff_clip!(com)
+        coeff_clip!(com, 1e-16)
         if length(com) == 0
             println(" [H,diag] == 0 Exiting. ")
             break
         end
-        coeff, G = findmax(v -> abs(v), com) 
+        coeff, G = findmax(v -> abs(v), com)
         θi, costi = optimize_theta_disentangle(O,G,M,stepsize=.000001, verbose=0)
-        O = evolve(O,G,θi)
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
+        O = PauliOperators.evolve(O,G,θi)
+        coeff_clip!(O, evolve_coeff_thresh)
 
         norm_new = norm(q_space(O, M))
         verbose < 1 || @printf(" %6i %12.8f %12.8f %12.8f %12i", iter, θi, norm(O), norm_new, length(O))

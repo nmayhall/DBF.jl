@@ -170,11 +170,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         time = 0
        
         # Create the iteration dependent pool
-        time += @elapsed @timeit to "commutator" G = commutator(P,O)  
+        time += @elapsed @timeit to "commutator" G = commutator_clipped(P,O)
         
         len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
-        @timeit to "clip" coeff_clip!(G, thresh=grad_coeff_thresh)
+        @timeit to "clip" coeff_clip!(G, grad_coeff_thresh)
         if grad_weight_thresh < N
             @timeit to "wclip" weight_clip!(G, grad_weight_thresh)
         end
@@ -249,7 +249,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
             
             #
             # Truncate operator
-            @timeit to "clip" coeff_clip!(O, thresh=evolve_coeff_thresh)
+            @timeit to "clip" coeff_clip!(O, evolve_coeff_thresh)
             if evolve_weight_thresh < N
                 @timeit to "wclip" weight_clip!(O, evolve_weight_thresh)
             end
@@ -368,14 +368,21 @@ function commute_with_Zs(O::PauliSum{N}; thresh=1e-12) where N
             curr = get(out, PauliBasis(zp), 0.0) 
             out[PauliBasis(zp)] = curr + 2*coeff(zp)*c
         end
-        coeff_clip!(out, thresh=thresh)
+        coeff_clip!(out, thresh)
         sum!(out_tot, out)
-        coeff_clip!(out_tot, thresh=thresh)
+        coeff_clip!(out_tot, thresh)
     end
     return out_tot
 end
 
-function commutator(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12) where N
+"""
+    commutator_clipped(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12)
+
+Compute [O1, O2] with intermediate coefficient clipping for numerical stability
+with large operators. Unlike PauliOperators.commutator, this clips after each
+outer-loop iteration to control intermediate term growth.
+"""
+function commutator_clipped(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12) where N
     out_tot = PauliSum(N)
    
     for (p1, c1) in O1
@@ -390,9 +397,9 @@ function commutator(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12) where N
             curr = get(out, PauliBasis(p3), 0.0) 
             out[PauliBasis(p3)] = curr + 2*coeff(p3)*c1*c2
         end
-        coeff_clip!(out, thresh=thresh)
+        coeff_clip!(out, thresh)
         sum!(out_tot, out)
-        coeff_clip!(out_tot, thresh=thresh)
+        coeff_clip!(out_tot, thresh)
     end
     return out_tot
 end
@@ -456,7 +463,7 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
         # pool = max_of_commutator2(S, O, n_top=search_n_top)
         pool = S*O - O*S
         # pool = commute_with_Zs(O)
-        coeff_clip!(pool, thresh=grad_coeff_thresh)
+        coeff_clip!(pool, grad_coeff_thresh)
         # weight_clip!(pool, grad_weight_thresh)
         # pool = find_top_k(pool, search_n_top)
        
@@ -516,9 +523,9 @@ function groundstate_diffeq(Oin::PauliSum{N,T}, ψ::Ket{N};
           
             
 
-            O = evolve(O,gi,θi*stepsize)
+            O = PauliOperators.evolve(O,gi,θi*stepsize)
             e1 = expectation_value(O,ψ)
-            coeff_clip!(O, thresh=evolve_coeff_thresh)
+            coeff_clip!(O, evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
             e2 = expectation_value(O,ψ)
 

@@ -59,7 +59,7 @@ function dbf_diag(Oin::PauliSum{N,T};
         
         #
         # Evolve
-        O = evolve(O,G,θi)
+        O = PauliOperators.evolve(O,G,θi)
 
         # if norm(O) - costi(θi) > 1e-12
         #     @warn " Cost function not accurate: "
@@ -69,7 +69,7 @@ function dbf_diag(Oin::PauliSum{N,T};
 
         #
         # Here's where we will do our truncating
-        coeff_clip!(O, thresh=evolve_coeff_thresh)
+        coeff_clip!(O, evolve_coeff_thresh)
         weight_clip!(O, evolve_weigth_thresh)
         
 

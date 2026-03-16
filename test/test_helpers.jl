@@ -15,12 +15,12 @@ using BenchmarkTools
     B = rand(PauliSum{N}, n_paulis=200)
     B += B'
     
-    # @show DBF.largest(A*B-B*A)
+    # @show largest(A*B-B*A)
     # @show DBF.max_of_commutator(A,B,clip=-1)
     # @show DBF.max_of_commutator2(A,B,n_top=10000)
-    # @btime DBF.largest($A*$B-$B*$A)
+    # @btime largest($A*$B-$B*$A)
     # @btime DBF.max_of_commutator($A,$B,clip=-1)
-    a1 = DBF.largest(A*B-B*A)
+    a1 = largest(A*B-B*A)
     a2 = DBF.max_of_commutator(A,B,clip=-1)
     a3 = DBF.max_of_commutator2(A,B,n_top=100000)
     coeff, G = findmax(v -> abs(v), a3) 
@@ -75,7 +75,7 @@ using BenchmarkTools
     for i in 1:N
         Z = DBF.create_0_projector(N, i)
         ref = Z*H - H*Z
-        tst = DBF.commutator(Z,H)
+        tst = DBF.commutator_clipped(Z,H)
         @test norm(ref + -1*tst) < 1e-13
     end
 
@@ -99,7 +99,7 @@ using BenchmarkTools
     ψ = Ket{N}(0) 
 
     k1 = expectation_value(H,ψ)
-    k2 = DBF.variance(H,ψ)
+    k2 = variance(H,ψ)
     _,_,k3 = DBF.skewness(H,ψ)
    
     ψv = Vector(ψ)

@@ -10,7 +10,7 @@ using Test
     N = 3 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, 1, 2, 3, z=.1)
-    DBF.coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
 
     kidx = argmin([real(expectation_value(H,Ket{N}(ψi))) for ψi in 1:2^N])
     ψ = Ket{N}(kidx)
@@ -28,7 +28,7 @@ using Test
     pool2 = DBF.generate_pool_2_weight(N)
     pool = vcat(pool1, pool2)
     
-    @show DBF.variance(H,ψ)
+    @show variance(H,ψ)
 
     H, gi, θi = adapt(H, pool, ψ, 
                     max_iter=20, conv_thresh=1e-3, 
@@ -47,7 +47,7 @@ using Test
     end
     @test isapprox(evals1[1], evals4[1], atol=1e-8)
     
-    @test abs(DBF.variance(H,ψ)) < 1e-6
+    @test abs(variance(H,ψ)) < 1e-6
 end
 
 # test()

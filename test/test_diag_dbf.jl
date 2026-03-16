@@ -7,7 +7,7 @@ using Test
     N = 3 
     Random.seed!(2)
     H = DBF.heisenberg_1D(N, 1, 2, 3, z=.1)
-    DBF.coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
 
     println(" Original H:")
     display(H)
@@ -15,7 +15,7 @@ using Test
     evals2 = eigvals(Matrix(diag(H)))
     @printf(" ||H||  = %12.8f\n", norm(H))
     @printf(" ||Hd|| = %12.8f\n", norm(diag(H)))
-    @printf(" ||Ho|| = %12.8f\n", norm(DBF.offdiag(H)))
+    @printf(" ||Ho|| = %12.8f\n", norm(offdiag(H)))
     H, gi, θi = dbf_diag(H, max_iter=1000, conv_thresh=1e-7, evolve_coeff_thresh=1e-4)
     
     println(" New H:")

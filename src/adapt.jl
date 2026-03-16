@@ -89,12 +89,12 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             abs(costi(0) - costi(θi)) > grad_coeff_thresh || continue
            
 
-            O = evolve(O,G,θi)
+            O = PauliOperators.evolve(O,G,θi)
 
             e1 = expectation_value(O,ψ)
             #
             # Truncate operator
-            coeff_clip!(O, thresh=evolve_coeff_thresh)
+            coeff_clip!(O, evolve_coeff_thresh)
             weight_clip!(O, evolve_weight_thresh)
             e2 = expectation_value(O,ψ)
 
@@ -147,25 +147,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     return O, generators, angles
 end
 
-function variance(O::PauliSum{N}, ψ::Ket{N}) where N
-    σ = KetSum(N, ComplexF64)
-    for (p,ci) in O
-        cj, ki = p*ψ
-        # σ[ki] += cj*ci
-        curr = get(σ, ki, 0.0) + cj*ci
-        σ[ki] = curr 
-    end 
-    
-    # @show norm(Vector(σ)), norm(Matrix(O)*Vector(ψ))
-    e2 = 0
-    for (k,v) in σ 
-        e2 += v'*v
-    end
-
-    e1 = expectation_value(O,ψ)
-
-    return e2 - e1^2
-end
+# variance(O::PauliSum, ψ::Ket) is now in PauliOperators statistics.jl
 
 function skewness(O::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
     Oxz = pack_x_z(O)
@@ -201,7 +183,7 @@ function generate_commutator_pool(O::PauliSum{N}) where N
         end
     end
     gen = O*S-S*O
-    coeff_clip!(gen)
+    coeff_clip!(gen, 1e-16)
 
     pool = Vector{PauliBasis{N}}([])
     for (p,c) in gen 
@@ -475,7 +457,7 @@ function pool_test1(O::PauliSum{N}) where N
 
     # pool = O*pool + pool*O
     # weight_clip!(pool,5)
-    coeff_clip!(pool)
+    coeff_clip!(pool, 1e-16)
 
     return [first(x) for x in sort(collect(pool), by = x -> abs(last(x)))]
 end

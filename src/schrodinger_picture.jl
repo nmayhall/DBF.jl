@@ -231,7 +231,7 @@ function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=
     vref = KetSum(ref_basis)
     fill!(vref, [1], ref_basis)
     b = DBF.matvec(pack_x_z(H), vref)
-    coeff_clip!(b, thresh=thresh)
+    coeff_clip!(b, thresh)
     delete!(b, ref)
     basis = collect(keys(b))
     e0 = expectation_value(H, ref)
@@ -282,7 +282,7 @@ function fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing,
         fois += DBF.matvec(H, fois)
         # sum!(fois, DBF.matvec(H, fois))
     end
-    coeff_clip!(fois, thresh=thresh)
+    coeff_clip!(fois, thresh)
     basis = collect(keys(fois))
     e0 = expectation_value(H, ref)
 

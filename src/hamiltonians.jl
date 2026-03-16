@@ -15,7 +15,7 @@ function af_heisenberg(N, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
         H += y/2 * Pauli(N, Y=[i])
         H += z/2 * Pauli(N, Z=[i])
     end 
-    coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
     return H
 end
 function af_heisenberg(Nx, Ny, Jx, Jy, Jz; periodic=true)
@@ -51,7 +51,7 @@ function af_heisenberg(Nx, Ny, Jx, Jy, Jz; periodic=true)
             end
         end
     end
-    coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
     return H    
 end
 
@@ -186,7 +186,7 @@ function heisenberg_2D_zigzag(Nx, Ny, Jx, Jy, Jz; x=0, y=0, z=0, periodic=true)
         H += z * Pauli(N_total, Z=[site])
     end
 
-    coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
     return H
 end
 
@@ -262,7 +262,7 @@ function hubbard_model_1D(L::Int64, t::Float64, U::Float64)
     end
 
     #Filter zero coefficients
-    DBF.coeff_clip!(H)
+    coeff_clip!(H, 1e-16)
 
     return H    
 end
@@ -327,7 +327,7 @@ function fermi_hubbard_2D(Lx::Int, Ly::Int, t::Float64, U::Float64)
     end
 
     # Filter zero coefficients
-    DBF.coeff_clip!(H, thresh=eps_coeff)
+    coeff_clip!(H, eps_coeff)
 
     return H
 end
@@ -387,7 +387,7 @@ function fermi_hubbard_2D_zigzag(Lx::Int, Ly::Int, t::Float64, U::Float64)
     end
 
     # Filter zero coefficients
-    DBF.coeff_clip!(H, thresh=eps_coeff)
+    coeff_clip!(H, eps_coeff)
 
     return H
 end

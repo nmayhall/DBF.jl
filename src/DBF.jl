@@ -19,24 +19,16 @@ include("evolve.jl")
 include("schrodinger_picture.jl")
 
 
-export evolve
-export evolve!
-export inner_product
-export offdiag
-export inner_product
+# Functions now exported by PauliOperators:
+#   evolve, evolve!, inner_product, offdiag, coeff_clip!, weight_clip!,
+#   hadamard, cnot, X_gate, Y_gate, Z_gate, S_gate, T_gate,
+#   variance, commutator, anticommutator, majorana_weight, majorana_weight_clip!
+
 export dbf_diag
 export dbf_groundstate
 export dbf_disentangle
 export adapt
-export coeff_clip!
 export pack_x_z
-export project 
-export hadamard
-export cnot
-export X_gate 
-export Y_gate 
-export Z_gate 
-export S_gate 
-export T_gate 
+export project
 
 end
