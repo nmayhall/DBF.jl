@@ -16,7 +16,7 @@ using Test
     @printf(" ||H||  = %12.8f\n", norm(H))
     @printf(" ||Hd|| = %12.8f\n", norm(diag(H)))
     @printf(" ||Ho|| = %12.8f\n", norm(offdiag(H)))
-    H, gi, θi = dbf_diag(H, max_iter=1000, conv_thresh=1e-7, evolve_coeff_thresh=1e-4)
+    H, gi, θi = dbf_diag(H, max_iter=1000, conv_thresh=1e-7, truncation=CoeffTruncation(1e-4))
     
     println(" New H:")
     display(H)

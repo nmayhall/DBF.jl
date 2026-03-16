@@ -1,16 +1,20 @@
 using PauliOperators
 
 """
-    dbf_eval(Oin::PauliSum{N,T}, ψ::Ket{N}; 
-    max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-    evolve_coeff_thresh=1e-12) where {N,T}
+    adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
+    max_iter=10, verbose=1, conv_thresh=1e-3,
+    truncation=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20)),
+    grad_coeff_thresh=1e-8) where {N,T}
 
-TBW
+ADAPT-VQE style optimization. At each step, the generator with the largest
+gradient is selected from `pool`, the rotation angle is optimized analytically,
+and the Hamiltonian is evolved and truncated.
+
+The `truncation` kwarg accepts any `TruncationStrategy` from PauliOperators.
 """
-function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N}; 
-            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-12,
-            evolve_weight_thresh=20,
+function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
+            max_iter=10, verbose=1, conv_thresh=1e-3,
+            truncation::TruncationStrategy=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20)),
             grad_coeff_thresh=1e-8,
             extra_diag=nothing) where {N,T}
     O = deepcopy(Oin)
@@ -22,7 +26,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
 
     G_old = Pauli(N)
     
-    accumulated_error = 0
+    corr = EnergyCorrection(ψ)
 
     grad_vec = zeros(length(pool))
 
@@ -91,14 +95,9 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
 
             O = PauliOperators.evolve(O,G,θi)
 
-            e1 = expectation_value(O,ψ)
             #
             # Truncate operator
-            coeff_clip!(O, evolve_coeff_thresh)
-            weight_clip!(O, evolve_weight_thresh)
-            e2 = expectation_value(O,ψ)
-
-            accumulated_error += e2 - e1
+            truncate!(O, truncation, corr)
             # if norm_new - costi(θi) > 1e-12
             #     @show norm_new - costi(θi)
             #     throw(ErrorException)
@@ -117,7 +116,7 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
         verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
         verbose < 1 || @printf(" %12i", n_rots)
         verbose < 1 || @printf(" %12i", length(O))
-        verbose < 1 || @printf(" %12.8f", real(accumulated_error))
+        verbose < 1 || @printf(" %12.8f", real(corr.accumulated_energy))
         verbose < 1 || @printf(" %12.8f", real(var_curr))
         verbose < 1 || @printf(" %12.8f", entropy(O))
         verbose < 1 || @printf("\n")

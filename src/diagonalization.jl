@@ -3,16 +3,18 @@ using Optim
 
 
 """
-    dbf_diag(Oin::PauliSum{N,T}; 
-    max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-    evolve_coeff_thresh=1e-12) where {N,T}
+    dbf_diag(Oin::PauliSum{N,T};
+    max_iter=10, verbose=1, conv_thresh=1e-3,
+    truncation=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20))) where {N,T}
 
-Compute the double bracket flow for diagonalization of `Oin`
+Compute the double bracket flow for diagonalization of `Oin`.
+
+The `truncation` kwarg accepts any `TruncationStrategy` from PauliOperators
+(e.g., `CoeffTruncation`, `WeightTruncation`, `CompositeTruncation`, etc.).
 """
-function dbf_diag(Oin::PauliSum{N,T}; 
-            max_iter=10, thresh=1e-4, verbose=1, conv_thresh=1e-3,
-            evolve_coeff_thresh=1e-12,
-            evolve_weigth_thresh=20,
+function dbf_diag(Oin::PauliSum{N,T};
+            max_iter=10, verbose=1, conv_thresh=1e-3,
+            truncation::TruncationStrategy=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20)),
             search_n_top=100,
             extra_diag=nothing) where {N,T}
 
@@ -69,8 +71,7 @@ function dbf_diag(Oin::PauliSum{N,T};
 
         #
         # Here's where we will do our truncating
-        coeff_clip!(O, evolve_coeff_thresh)
-        weight_clip!(O, evolve_weigth_thresh)
+        truncate!(O, truncation)
         
 
         norm_new = norm(diag(O))

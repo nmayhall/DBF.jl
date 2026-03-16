@@ -2,7 +2,7 @@
 
 **Double Bracket Flow** methods for quantum Hamiltonian diagonalization, ground state preparation, and disentanglement using Pauli operator algebra.
 
-DBF.jl works in the **Heisenberg picture**: rather than optimizing the quantum state, it iteratively applies unitary rotations to transform the Hamiltonian itself. Each rotation has the form $e^{i\theta G/2} H\, e^{-i\theta G/2}$ where $G$ is a Pauli generator. Operator truncation (coefficient clipping, weight clipping) keeps the representation compact, enabling simulation of systems beyond the reach of exact methods.
+DBF.jl works in the **Heisenberg picture**: rather than optimizing the quantum state, it iteratively applies unitary rotations to transform the Hamiltonian itself. Each rotation has the form $e^{i\theta G/2} H\, e^{-i\theta G/2}$ where $G$ is a Pauli generator. Operator truncation keeps the representation compact, enabling simulation of systems beyond the reach of exact methods. Truncation is controlled via PauliOperators.jl's composable `TruncationStrategy` type system.
 
 Built on [PauliOperators.jl](https://github.com/nmayhall/PauliOperators.jl) for efficient symplectic Pauli algebra (up to 128 qubits).
 
@@ -29,7 +29,13 @@ H = DBF.heisenberg_1D(N, 1.0, 1.0, 1.0, z=0.1)
 H_diag, generators, angles = dbf_diag(H,
     max_iter=1000,
     conv_thresh=1e-6,
-    evolve_coeff_thresh=1e-4)
+    truncation=CoeffTruncation(1e-4))
+
+# Or use composite truncation (coefficient + weight clipping):
+H_diag, generators, angles = dbf_diag(H,
+    max_iter=1000,
+    conv_thresh=1e-6,
+    truncation=CompositeTruncation(CoeffTruncation(1e-4), WeightTruncation(10)))
 
 # H_diag is now approximately diagonal in the Z basis.
 # generators and angles record the unitary circuit:
@@ -52,8 +58,13 @@ H = DBF.heisenberg_1D(N, 1.0, 2.0, 3.0, z=0.1)
 res = dbf_groundstate(H, ψ,
     max_iter=50,
     conv_thresh=1e-4,
-    evolve_coeff_thresh=1e-6,
-    grad_coeff_thresh=1e-8)
+    operator_truncation=CoeffTruncation(1e-6),
+    gradient_truncation=CoeffTruncation(1e-8))
+
+# For more aggressive truncation, use composite strategies:
+# res = dbf_groundstate(H, ψ,
+#     operator_truncation=CompositeTruncation(CoeffTruncation(1e-6), WeightTruncation(8)),
+#     gradient_truncation=CompositeTruncation(CoeffTruncation(1e-6), MajoranaWeightTruncation(4)))
 
 H_opt = res["hamiltonian"]
 E = real(expectation_value(H_opt, ψ))       # ground state energy
@@ -80,7 +91,7 @@ pool = vcat(DBF.generate_pool_1_weight(N), DBF.generate_pool_2_weight(N))
 H_opt, generators, angles = adapt(H, pool, ψ,
     max_iter=30,
     conv_thresh=1e-4,
-    evolve_coeff_thresh=1e-4)
+    truncation=CoeffTruncation(1e-4))
 ```
 
 ### Block-Diagonalize (Disentangle)
@@ -116,8 +127,8 @@ Returns the (approximately) diagonalized Hamiltonian plus the full circuit as ge
 Transforms $H$ so that a computational basis state $|\psi\rangle$ becomes its ground state, minimizing $\langle\psi|H|\psi\rangle$. Uses an $n$-body Z-projector approximation to $|\psi\rangle\langle\psi|$ as the source operator. Supports:
 
 - Adjustable projector body order (`n_body=1` to `6`)
-- Coefficient, weight, and Majorana weight truncation thresholds
-- Accumulated truncation error tracking
+- Separate `operator_truncation` and `gradient_truncation` strategies (any `TruncationStrategy`)
+- Automatic truncation error tracking via `CorrectionAccumulator`
 - PT2 energy corrections at each macro-iteration
 - JLD2 checkpointing (`checkfile` kwarg)
 
@@ -150,13 +161,31 @@ All Hamiltonians are returned as `PauliSum` objects. Optional keyword arguments 
 
 ## Truncation
 
-After each rotation, the Hamiltonian is truncated to control its growth:
+After each rotation, the Hamiltonian is truncated to control operator growth. All DBF functions accept `TruncationStrategy` objects from PauliOperators.jl, making truncation composable and swappable:
 
-- **Coefficient clipping** (`coeff_clip!`): removes Pauli terms with $|c_i| < \epsilon$
-- **Weight clipping** (`weight_clip!`): removes terms with Pauli weight above a threshold
-- **Majorana weight clipping** (`majorana_weight_clip!`): removes terms with Majorana weight above a threshold
+| Strategy | Description |
+|----------|-------------|
+| `CoeffTruncation(ε)` | Remove terms with $\|c_i\| \le \epsilon$ |
+| `WeightTruncation(w)` | Remove terms with Pauli weight $> w$ |
+| `MajoranaWeightTruncation(w)` | Remove terms with Majorana weight $> w$ |
+| `CompositeTruncation(s1, s2, ...)` | Apply multiple strategies in sequence |
+| `StochasticCoeffTruncation(ε)` | Unbiased Russian Roulette compression |
+| `AdaptiveTruncation(max_terms, min_thresh)` | Adaptively increase threshold if too many terms |
+| `NoTruncation()` | Identity (do nothing) |
 
-The accumulated truncation error (difference in energy before vs. after clipping) is tracked throughout the optimization and returned in the results.
+**Composing strategies:**
+
+```julia
+# Coefficient clip, then weight clip, then Majorana weight clip
+trunc = CompositeTruncation(
+    CoeffTruncation(1e-6),
+    WeightTruncation(8),
+    MajoranaWeightTruncation(4))
+
+res = dbf_groundstate(H, ψ, operator_truncation=trunc)
+```
+
+**Error tracking:** Functions that track truncation error (`dbf_groundstate`, `adapt`, sequence `evolve`) use PauliOperators' `CorrectionAccumulator` internally to measure $\Delta E = \langle\psi|H|\psi\rangle_\text{after} - \langle\psi|H|\psi\rangle_\text{before}$ at each truncation step. The accumulated error is returned in the results.
 
 ## Perturbation Theory & Subspace Methods
 

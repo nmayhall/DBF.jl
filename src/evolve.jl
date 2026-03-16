@@ -3,9 +3,18 @@ using LinearAlgebra
 
 # Single-step evolve, evolve!, and KetSum evolve are now in PauliOperators
 
+"""
+    evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
+           truncation=CompositeTruncation(CoeffTruncation(1e-3), WeightTruncation(N)),
+           verbose=1, compute_var_err=false, print_n_steps=10, ψ=Ket{N}(0))
+
+Evolve `O0` through a sequence of Pauli rotations, truncating after each step.
+
+The `truncation` kwarg accepts any `TruncationStrategy` from PauliOperators.
+Returns `(O, energies, variances, accumulated_error, accumulated_var_error)`.
+"""
 function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
-                thresh=1e-3,
-                max_weight=N,
+                truncation::TruncationStrategy=CompositeTruncation(CoeffTruncation(1e-3), WeightTruncation(N)),
                 verbose=1,
                 compute_var_err = false,
                 print_n_steps = 10,
@@ -17,42 +26,36 @@ function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
     verbose < 1 || @printf(" Number of rotations: %i\n", ng)
     energies = zeros(T,ng)
     variances = zeros(T,ng)
-    accumated_error = zeros(T,ng)
-    accumated_var_error = zeros(T,ng)
-    v1 = 0
-    v2 = 0
+    accumulated_error = zeros(T,ng)
+    accumulated_var_error = zeros(T,ng)
 
-    err = 0
-    verr = 0
+    # Choose correction accumulator based on whether we track variance error
+    corr = compute_var_err ? EnergyVarianceCorrection(ψ) : EnergyCorrection(ψ)
+
     Ot = deepcopy(O0)
     idx = 1
     for (gi, θi) in zip(g, θ)
 
         Ot = PauliOperators.evolve(Ot, gi, θi)
-        e1 = expectation_value(Ot, ψ)
-        if compute_var_err
-            v1 = variance(Ot, ψ)
-        end 
-        coeff_clip!(Ot, thresh)
-        weight_clip!(Ot, max_weight)
-        e2 = expectation_value(Ot, ψ)
-        if compute_var_err
-            v2 = variance(Ot, ψ)
-        end 
 
-        err += e2 - e1
-        verr += v2 - v1
+        truncate!(Ot, truncation, corr)
+
+        e2 = expectation_value(Ot, ψ)
+        v2 = compute_var_err ? variance(Ot, ψ) : zero(T)
+
         energies[idx] = e2
         variances[idx] = v2
-        accumated_error[idx] = err
-        accumated_var_error[idx] = verr
+        accumulated_error[idx] = corr.accumulated_energy
+        accumulated_var_error[idx] = compute_var_err ? corr.accumulated_variance : zero(T)
 
         if idx%(length(g)÷print_n_steps) == 0
-            @printf(" %4i E = %12.8f Var = %12.8f err = %12.8f verr = %12.8f\n", idx, e2, v2, err, verr)
+            @printf(" %4i E = %12.8f Var = %12.8f err = %12.8f verr = %12.8f\n",
+                    idx, e2, v2, corr.accumulated_energy,
+                    compute_var_err ? corr.accumulated_variance : zero(T))
         end
         idx += 1
     end
-    return Ot, energies, variances, accumated_error, accumated_var_error
+    return Ot, energies, variances, accumulated_error, accumulated_var_error
 end
 
 

@@ -28,9 +28,9 @@ using Test
     @show variance(H,ψ)
 
     res = DBF.dbf_groundstate(H, ψ,
-                    max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-6,
-                    grad_coeff_thresh=1e-10,
+                    max_iter=20, conv_thresh=1e-3,
+                    operator_truncation=CoeffTruncation(1e-6),
+                    gradient_truncation=CoeffTruncation(1e-10),
                     energy_lowering_thresh=1e-10)
   
     H = res["hamiltonian"]
@@ -63,10 +63,10 @@ end
     @show norm(H)^2, norm(diag(H))^2, norm(offdiag(H))^2
     @show e_exact = minimum(real(eigvals(Matrix(H))))
     @show e_ref = expectation_value(H,ψ) 
-    res = DBF.dbf_groundstate(H, ψ, 
-                    max_iter=20, conv_thresh=1e-3, 
-                    evolve_coeff_thresh=1e-6,
-                    grad_coeff_thresh=1e-3,
+    res = DBF.dbf_groundstate(H, ψ,
+                    max_iter=20, conv_thresh=1e-3,
+                    operator_truncation=CoeffTruncation(1e-6),
+                    gradient_truncation=CoeffTruncation(1e-3),
                     energy_lowering_thresh=1e-3)
    
     H = res["hamiltonian"]

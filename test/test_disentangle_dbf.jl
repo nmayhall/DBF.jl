@@ -50,7 +50,7 @@ function test()
     @printf(" ||H||  = %12.8f\n", norm(H))
     @printf(" ||Hp|| = %12.8f\n", norm(DBF.p_space(H,M)))
     @printf(" ||Hq|| = %12.8f\n", norm(DBF.q_space(H,M)))
-    H, gi, θi = dbf_disentangle(H, M, max_iter=1000, conv_thresh=1e-7, evolve_coeff_thresh=1e-6)
+    H, gi, θi = dbf_disentangle(H, M, max_iter=1000, conv_thresh=1e-7, truncation=CoeffTruncation(1e-6))
    
     Hmat = Matrix(H)
     e,v = eigen(Hmat)
