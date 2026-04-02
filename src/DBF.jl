@@ -4,6 +4,8 @@ using PauliOperators
 using Printf
 using LinearAlgebra
 using OrderedCollections
+using Polynomials: Polynomials
+import PauliOperators: truncate!
 
 # Hmap = FermiCG.LinOpMat{T}(matvec, length(vec), true)
 XZPauliSum{T} = Dict{Int128,Vector{Tuple{Int128,T}}}
@@ -30,5 +32,7 @@ export dbf_disentangle
 export adapt
 export pack_x_z
 export project
+export extrapolate_energy
+export plot_extrapolation
 
 end

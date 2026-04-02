@@ -138,7 +138,8 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     out["norms_per_grad"] = Vector{Float64}([])
     out["pt2_per_grad"] = Vector{Float64}([])
     out["variance_per_grad"] = Vector{Float64}([])
-    
+    out["accumulated_var_error_per_grad"] = Vector{Float64}([])
+
     push!(out["energies"], ecurr)
     push!(out["variances"], variance(O,ψ))
     push!(out["accumulated_error"], initial_error)
@@ -149,6 +150,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     push!(out["accumulated_error_per_grad"], initial_error)
     push!(out["pt2_per_grad"], real(e2))
     push!(out["variance_per_grad"], variance(O,ψ))
+    push!(out["accumulated_var_error_per_grad"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
     push!(out["norms_per_grad"], norm(O))
    
     verbose < 1 || @printf(" %6s", "Iter")
@@ -308,6 +310,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         push!(out["accumulated_error_per_grad"], corr.accumulated_energy)
         push!(out["energies_per_grad"], ecurr)
         push!(out["variance_per_grad"], var_curr)
+        push!(out["accumulated_var_error_per_grad"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
         push!(out["norms_per_grad"], norm(O))
 
         if checkfile !== nothing

@@ -41,7 +41,6 @@ function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
     
     for iter in 1:max_iter
         
-
         # Compute gradient vector
         for (pi,p) in enumerate(pool)
             # dyad = (ψ * ψ') * p'

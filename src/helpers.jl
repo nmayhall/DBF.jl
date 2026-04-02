@@ -215,4 +215,146 @@ function pack_x_z(H::PauliSum{N,T}) where {N,T}
 end
 
 
+"""
+    extrapolate_energy(out::Dict; use_per_grad=false, min_points=5, r2_thresh=0.8, verbose=1)
+
+Perform energy-variance extrapolation on the output of `dbf_groundstate`.
+
+Fits both linear and quadratic models to (corrected_variance, corrected_energy) data,
+and extrapolates to zero variance. The extrapolated energy is the average of the two
+intercepts: E(v=0) = (b₁ + b₂)/2, with uncertainty ±|b₁ - b₂|/2.
+
+The optimal data window is selected by scanning backwards from the final iteration,
+choosing the cutoff that minimizes uncertainty while maintaining R² > `r2_thresh`.
+
+# Arguments
+- `out::Dict`: output dictionary from `dbf_groundstate`
+- `use_per_grad::Bool=false`: if true, use per-macro-iteration data instead of per-rotation
+- `min_points::Int=5`: minimum number of data points for fitting
+- `r2_thresh::Float64=0.8`: minimum R² for the linear fit
+- `verbose::Int=1`: verbosity level (0=silent, 1=summary)
+
+# Returns
+A `NamedTuple` with fields:
+- `energy`: extrapolated energy at zero variance
+- `uncertainty`: half the difference between linear and quadratic intercepts
+- `cutoff`: index of the first data point included in the fit
+- `r2_linear`: R² of the linear fit
+- `fit_linear`: the linear polynomial fit
+- `fit_quadratic`: the quadratic polynomial fit
+- `corrected_energies`: vector of corrected energies
+- `corrected_variances`: vector of corrected variances
+"""
+function extrapolate_energy(out::Dict;
+    use_per_grad::Bool=false,
+    min_points::Int=5,
+    r2_thresh::Float64=0.8,
+    verbose::Int=1)
+
+    if use_per_grad
+        energies = out["energies_per_grad"]
+        variances = out["variance_per_grad"]
+        acc_err = out["accumulated_error_per_grad"]
+        acc_var_err = get(out, "accumulated_var_error_per_grad", zeros(length(energies)))
+    else
+        energies = out["energies"]
+        variances = out["variances"]
+        acc_err = out["accumulated_error"]
+        acc_var_err = out["accumulated_var_error"]
+    end
+
+    ce = real.(energies .- acc_err)
+    cv = real.(variances .- acc_var_err)
+
+    N = length(ce)
+    if N < min_points
+        @warn "Only $N data points available, need at least $min_points for fitting."
+        return (energy=NaN, uncertainty=NaN, cutoff=1, r2_linear=NaN,
+                fit_linear=nothing, fit_quadratic=nothing,
+                corrected_energies=ce, corrected_variances=cv)
+    end
+
+    best_cutoff = 1
+    best_uncertainty = Inf
+    best_r2 = -Inf
+    fallback_cutoff = 1
+    fallback_r2 = -Inf
+
+    for c in (N - min_points + 1):-1:1
+        npts = N - c + 1
+        npts >= 3 || continue  # need at least 3 points for quadratic fit
+
+        x = cv[c:end]
+        y = ce[c:end]
+
+        fit_lin = Polynomials.fit(x, y, 1)
+        fit_quad = Polynomials.fit(x, y, 2)
+
+        b1 = fit_lin(0.0)
+        b2 = fit_quad(0.0)
+        uncertainty = abs(b1 - b2) / 2.0
+
+        # R² for linear fit
+        y_pred = fit_lin.(x)
+        ss_res = sum((y .- y_pred).^2)
+        y_mean = sum(y) / length(y)
+        ss_tot = sum((y .- y_mean).^2)
+        r2 = ss_tot > 0 ? 1.0 - ss_res / ss_tot : 1.0
+
+        # Track best fallback (highest R²)
+        if r2 > fallback_r2
+            fallback_r2 = r2
+            fallback_cutoff = c
+        end
+
+        # Among cutoffs meeting R² threshold, pick minimum uncertainty
+        if r2 > r2_thresh && uncertainty < best_uncertainty
+            best_uncertainty = uncertainty
+            best_r2 = r2
+            best_cutoff = c
+        end
+    end
+
+    # Use fallback if no cutoff met the R² threshold
+    if best_uncertainty == Inf
+        best_cutoff = fallback_cutoff
+        @warn "No cutoff met R² threshold of $r2_thresh. Using best R² cutoff."
+    end
+
+    x = cv[best_cutoff:end]
+    y = ce[best_cutoff:end]
+    fit_lin = Polynomials.fit(x, y, 1)
+    fit_quad = Polynomials.fit(x, y, 2)
+    b1 = fit_lin(0.0)
+    b2 = fit_quad(0.0)
+    energy = (b1 + b2) / 2.0
+    uncertainty = abs(b1 - b2) / 2.0
+
+    y_pred = fit_lin.(x)
+    ss_res = sum((y .- y_pred).^2)
+    y_mean = sum(y) / length(y)
+    ss_tot = sum((y .- y_mean).^2)
+    r2 = ss_tot > 0 ? 1.0 - ss_res / ss_tot : 1.0
+
+    if verbose >= 1
+        @printf(" Extrapolated energy: %12.8f ± %12.8f\n", energy, uncertainty)
+        @printf(" Linear intercept:    %12.8f\n", b1)
+        @printf(" Quadratic intercept: %12.8f\n", b2)
+        @printf(" R² (linear):         %12.8f\n", r2)
+        @printf(" Data window:         %i:%i (%i points)\n", best_cutoff, N, N - best_cutoff + 1)
+    end
+
+    return (energy=energy, uncertainty=uncertainty, cutoff=best_cutoff, r2_linear=r2,
+            fit_linear=fit_lin, fit_quadratic=fit_quad,
+            corrected_energies=ce, corrected_variances=cv)
+end
+
+"""
+    plot_extrapolation(out::Dict; kwargs...)
+
+Plot energy vs variance with linear/quadratic extrapolation to zero variance.
+Requires `using Plots` to be called first (implemented as a package extension).
+"""
+function plot_extrapolation end
+
 # KetSum +/- KetSum are now in PauliOperators addition.jl
