@@ -75,24 +75,79 @@ var = variance(H_opt, ψ)                     # should be near zero
 e0, e2 = DBF.pt2(H_opt, ψ)
 ```
 
-### ADAPT-VQE Style Optimization
+### ADAPT-VQE Optimization
+
+ADAPT-VQE builds a unitary ansatz one operator at a time. At each iteration it:
+1. Screens every operator in a user-defined pool for the energy gradient
+2. Appends the largest-gradient operator to the sequence
+3. Re-optimizes **all active** rotation angles simultaneously via LBFGS
 
 ```julia
 using DBF
 using PauliOperators
 
-N = 6
-H = DBF.heisenberg_1D(N, 1.0, 1.0, 1.0)
+N = 8
+H = DBF.heisenberg_1D(N, 1.0, 1.0, 1.0, z=0.1)
+
+# Prepare a Neel-state reference
+g, a = DBF.get_1d_neel_state_sequence(N)
+for (gi, ai) in zip(g, a)
+    global H = evolve(H, gi, ai)
+end
 ψ = Ket{N}(0)
 
-# Build an operator pool
-pool = vcat(DBF.generate_pool_1_weight(N), DBF.generate_pool_2_weight(N))
+# Build an operator pool (1- through 3-body Paulis)
+pool = vcat(
+    DBF.generate_pool_1_weight(N),
+    DBF.generate_pool_2_weight(N),
+    DBF.generate_pool_3_weight(N))
 
-# Run ADAPT optimization
-H_opt, generators, angles = adapt(H, pool, ψ,
-    max_iter=30,
-    conv_thresh=1e-4,
-    truncation=CoeffTruncation(1e-4))
+# Run ADAPT — optimize all angles at every step
+res = adapt(H, pool, ψ, max_iter=30, conv_thresh=1e-3)
+
+res.energies[end]        # final energy
+length(res.generators)   # number of operators in the ansatz
+```
+
+#### Active window (freezing early operators)
+
+For long ansatze, re-optimizing every angle becomes expensive. The `active_window` keyword freezes all but the last `k` operators: frozen rotations are absorbed into a Heisenberg-evolved, truncated Hamiltonian `H_frozen`, while only the trailing window remains variationally active. Truncation error is tracked automatically.
+
+```julia
+res = adapt(H, pool, ψ,
+    max_iter=50,
+    conv_thresh=1e-3,
+    active_window=10,                           # optimize only the last 10 angles
+    operator_truncation=CoeffTruncation(1e-6))   # truncation for frozen layers
+
+res.H_frozen             # the truncated, frozen-layer Hamiltonian
+res.accumulated_error    # total energy truncation error from freezing
+res.accumulated_var_error # total variance truncation error
+```
+
+#### Keyword reference
+
+| Keyword | Default | Description |
+|---------|---------|-------------|
+| `max_iter` | `10` | Maximum ADAPT iterations |
+| `conv_thresh` | `1e-3` | Convergence threshold on max gradient norm |
+| `active_window` | `nothing` | Number of trailing angles to optimize; `nothing` = all |
+| `operator_truncation` | `CoeffTruncation(1e-6)` | Truncation strategy applied when freezing operators |
+| `compute_var_error` | `true` | Track variance truncation error from freezing |
+| `maxiter_lbfgs` | `100` | Max LBFGS iterations per re-optimization |
+| `g_tol` | `1e-8` | LBFGS gradient convergence tolerance |
+
+### Multi-Angle Optimization (`optimize_rotation_sequence`)
+
+Standalone function to variationally minimize $\langle\psi|U^\dagger H\, U|\psi\rangle$ over all rotation angles simultaneously, given a fixed sequence of Pauli generators. Used internally by `adapt`, but also useful on its own:
+
+```julia
+generators = [PauliBasis(Pauli(N, Y=[1], X=[2])),
+              PauliBasis(Pauli(N, Y=[3], X=[4]))]
+
+res = optimize_rotation_sequence(H, generators, ψ, maxiter=200)
+res.energy   # optimized energy
+res.angles   # optimized θ vector
 ```
 
 ### Block-Diagonalize (Disentangle)
@@ -135,7 +190,7 @@ Transforms $H$ so that a computational basis state $|\psi\rangle$ becomes its gr
 
 ### ADAPT Optimization (`adapt`)
 
-Pool-based greedy optimization. At each step, the generator with the largest gradient $|\mathrm{Im}\langle\psi|[G_i, H]|\psi\rangle|$ is selected from a predefined pool, and the rotation angle is optimized analytically.
+True ADAPT-VQE algorithm. At each macro-iteration, the generator with the largest gradient $|\mathrm{Im}\langle\psi|[H_\text{eff}, G_i]|\psi\rangle|$ is selected from a predefined pool and appended to the ansatz. All active rotation angles are then re-optimized simultaneously via LBFGS using a mixed Heisenberg/Schrödinger picture (gradients computed via backpropagation-style forward/backward passes through the state). An optional `active_window` parameter freezes early operators into a truncated Heisenberg-evolved Hamiltonian, keeping the optimization cost constant as the ansatz grows.
 
 Built-in pool generators: `generate_pool_1_weight` through `generate_pool_6_weight`, and `qubitexcitationpool` for fermionic-style singles and doubles.
 
@@ -205,7 +260,10 @@ These use the `XZPauliSum` representation (Pauli terms grouped by X-bitstring) f
 | `dbf_diag(H; kwargs...)` | Diagonalize a Hamiltonian via double bracket flow |
 | `dbf_groundstate(H, ψ; kwargs...)` | Ground state preparation |
 | `dbf_disentangle(H, M; kwargs...)` | Block-diagonalize across a qubit partition |
-| `adapt(H, pool, ψ; kwargs...)` | ADAPT-VQE style pool optimization |
+| `adapt(H, pool, ψ; kwargs...)` | ADAPT-VQE with simultaneous angle optimization |
+| `optimize_rotation_sequence(H, gens, ψ; kwargs...)` | LBFGS optimization of all rotation angles |
+| `extrapolate_energy(out; kwargs...)` | Energy-variance extrapolation to zero variance |
+| `plot_extrapolation(out; kwargs...)` | Plot E vs Var with extrapolation (requires `using Plots`) |
 | `pack_x_z(H)` | Convert `PauliSum` to X-bitstring-grouped representation |
 | `project(k, basis)` | Project a `KetSum` onto a basis |
 
@@ -215,7 +273,7 @@ Many additional utilities (Hamiltonians, pool generators, theta optimizers, pert
 
 - [PauliOperators.jl](https://github.com/nmayhall/PauliOperators.jl) -- Pauli operator algebra (evolution, clipping, statistics, gates)
 - [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) -- Iterative eigensolvers and linear solvers
-- [Optim.jl](https://github.com/JuliaNLSolvers/Optim.jl) -- 1D optimization for rotation angles
+- [Optim.jl](https://github.com/JuliaNLSolvers/Optim.jl) -- LBFGS multi-angle optimization and 1D angle optimization
 - [LinearMaps.jl](https://github.com/JuliaLinearAlgebra/LinearMaps.jl) -- Matrix-free linear maps for subspace methods
 - [JLD2.jl](https://github.com/JuliaIO/JLD2.jl) -- Checkpointing
 
