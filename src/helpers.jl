@@ -357,4 +357,107 @@ Requires `using Plots` to be called first (implemented as a package extension).
 """
 function plot_extrapolation end
 
+"""
+    optimize_rotation_sequence(H::PauliSum{N,T}, generators::Vector{PauliBasis{N}}, ψ::Ket{N};
+        initial_angles=zeros(length(generators)), maxiter=100, g_tol=1e-8, verbose=1)
+
+Variationally minimize `⟨ψ|U†HU|ψ⟩` over all rotation angles simultaneously,
+where `U = exp(-iθ₁/2 G₁) exp(-iθ₂/2 G₂) ⋯ exp(-iθₙ/2 Gₙ)`.
+
+Uses a mixed Heisenberg/Schrödinger picture: the cost function evolves the state
+(Schrödinger), and gradients are computed via a backpropagation-style backward pass.
+Optimization is performed with LBFGS.
+
+# Arguments
+- `H::PauliSum{N,T}`: the Hamiltonian operator
+- `generators::Vector{PauliBasis{N}}`: sequence of Pauli generators defining the rotations
+- `ψ::Ket{N}`: reference state
+
+# Keywords
+- `initial_angles::Vector{Float64}`: starting angles (default: all zeros)
+- `maxiter::Int=100`: maximum LBFGS iterations
+- `g_tol::Float64=1e-8`: gradient convergence tolerance
+- `verbose::Int=1`: verbosity (0=silent, 1=summary, 2=per-iteration trace)
+
+# Returns
+A `NamedTuple` with fields:
+- `angles::Vector{Float64}`: optimized rotation angles
+- `energy::Float64`: final energy `⟨ψ|U†HU|ψ⟩`
+- `result`: the full `Optim.Result` object
+"""
+function optimize_rotation_sequence(H::PauliSum{N,T}, generators::Vector{PauliBasis{N}}, ψ::Ket{N};
+    initial_angles::Vector{Float64}=zeros(length(generators)),
+    maxiter::Int=100,
+    g_tol::Float64=1e-8,
+    verbose::Int=1) where {N,T}
+
+    length(generators) == length(initial_angles) || throw(DimensionMismatch(
+        "generators ($(length(generators))) and initial_angles ($(length(initial_angles))) must have same length"))
+
+    Hxz = pack_x_z(H)
+
+    # Heisenberg convention: U_1†...U_n† H U_n...U_1 (generators applied left-to-right)
+    # Schrodinger equivalent: |ψ(θ)⟩ = U_n...U_1|ψ⟩ (generators applied in reverse)
+    rgens = reverse(generators)
+
+    # Cost function: evolve |ψ⟩ through the rotation sequence, compute ⟨ψ(θ)|H|ψ(θ)⟩
+    function _cost(angles)
+        rangs = reverse(angles)
+        ψt = KetSum(ψ, T=ComplexF64)
+        for (gi, θi) in zip(rgens, rangs)
+            evolve!(ψt, gi, θi)
+        end
+        return real(expectation_value(Hxz, ψt))
+    end
+
+    # Gradient via backpropagation:
+    #   1. Forward: evolve |ψ⟩ → |ψ(θ)⟩  (reversed generator order)
+    #   2. Compute |σ⟩ = H|ψ(θ)⟩
+    #   3. Backward: unwind rotations (original order), accumulating ∂E/∂θᵢ = Im⟨σ|gᵢ|ψ⟩
+    function _gradient(angles)
+        rangs = reverse(angles)
+        ψt = KetSum(ψ, T=ComplexF64)
+        for (gi, θi) in zip(rgens, rangs)
+            evolve!(ψt, gi, θi)
+        end
+
+        σt = matvec(Hxz, ψt)
+        gt = zeros(length(angles))
+        idx = 1
+        for (gi, θi) in zip(generators, angles)
+            gt[idx] = imag(matrix_element(σt, gi, ψt))
+            evolve!(ψt, gi, -θi)
+            evolve!(σt, gi, -θi)
+            idx += 1
+        end
+        return gt
+    end
+
+    options = Optim.Options(
+        iterations = maxiter,
+        x_reltol = 1e-8,
+        f_reltol = 1e-8,
+        g_tol = g_tol,
+        store_trace = verbose >= 2,
+    )
+
+    result = Optim.optimize(_cost, (G, x) -> G .= _gradient(x), initial_angles, Optim.LBFGS(), options)
+
+    if verbose >= 2 && Optim.Options().store_trace
+        @printf(" %4s %14s %12s\n", "iter", "energy", "g_norm")
+        for t in Optim.trace(result)
+            @printf(" %4i %14.8f %12.8f\n", t.iteration, t.value, t.g_norm)
+        end
+    end
+
+    if verbose >= 1
+        @printf(" Optimized energy: %14.8f  (iterations: %i)\n", result.minimum, Optim.iterations(result))
+        if Optim.iteration_limit_reached(result)
+            @warn "LBFGS iteration limit reached. Consider increasing `maxiter`."
+        end
+    end
+
+    return (angles=result.minimizer, energy=result.minimum, result=result)
+end
+
 # KetSum +/- KetSum are now in PauliOperators addition.jl

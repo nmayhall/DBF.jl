@@ -2,147 +2,146 @@ using PauliOperators
 
 """
     adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
-    max_iter=10, verbose=1, conv_thresh=1e-3,
-    truncation=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20)),
-    grad_coeff_thresh=1e-8) where {N,T}
+        max_iter=10, verbose=1, conv_thresh=1e-3,
+        active_window=nothing,
+        operator_truncation=CoeffTruncation(1e-6),
+        compute_var_error=true,
+        maxiter_lbfgs=100, g_tol=1e-8) where {N,T}
 
-ADAPT-VQE style optimization. At each step, the generator with the largest
-gradient is selected from `pool`, the rotation angle is optimized analytically,
-and the Hamiltonian is evolved and truncated.
+ADAPT-VQE optimization. At each macro-iteration:
+1. Compute the energy gradient for every operator in `pool`
+2. Select the operator with the largest gradient magnitude
+3. Append it to the growing generator sequence
+4. Re-optimize the last `active_window` rotation angles simultaneously via LBFGS
 
-The `truncation` kwarg accepts any `TruncationStrategy` from PauliOperators.
+When the ansatz grows beyond `active_window` operators, the earliest operators are
+"frozen": their rotations are absorbed into a truncated Heisenberg-evolved Hamiltonian
+`H_frozen`, with truncation error tracked via an accumulated correction. Only the last
+`active_window` operators remain variationally active.
+
+If `active_window=nothing` (default), all operators are always optimized (no freezing).
+
+Returns a `NamedTuple` with fields:
+- `generators`: full sequence of Pauli generators
+- `angles`: corresponding rotation angles
+- `energies`: energy after each ADAPT iteration
+- `H_frozen`: the truncated, frozen-layer Hamiltonian (equals `Oin` if no freezing occurred)
+- `accumulated_error`: total energy truncation error from freezing
+- `accumulated_var_error`: total variance truncation error from freezing (if `compute_var_error=true`)
 """
 function adapt(Oin::PauliSum{N,T}, pool::Vector{PauliBasis{N}}, ψ::Ket{N};
             max_iter=10, verbose=1, conv_thresh=1e-3,
-            truncation::TruncationStrategy=CompositeTruncation(CoeffTruncation(1e-12), WeightTruncation(20)),
-            grad_coeff_thresh=1e-8,
-            extra_diag=nothing) where {N,T}
-    O = deepcopy(Oin)
-    generators = Vector{PauliBasis}([])
+            active_window::Union{Nothing,Int}=nothing,
+            operator_truncation::TruncationStrategy=CoeffTruncation(1e-6),
+            compute_var_error::Bool=true,
+            maxiter_lbfgs::Int=100, g_tol::Float64=1e-8) where {N,T}
+
+    generators = Vector{PauliBasis{N}}([])
     angles = Vector{Float64}([])
-    norm_old = norm(offdiag(O))
-            
-    ecurr = expectation_value(O, ψ) 
+    energies = Vector{Float64}([])
 
-    G_old = Pauli(N)
-    
-    corr = EnergyCorrection(ψ)
+    # H_frozen is the Heisenberg-evolved H through the frozen (non-active) generators
+    H_frozen = deepcopy(Oin)
+    n_frozen = 0  # number of generators absorbed into H_frozen
 
-    grad_vec = zeros(length(pool))
+    # Track truncation error from freezing
+    corr = compute_var_error ? EnergyVarianceCorrection(ψ) : EnergyCorrection(ψ)
 
-    verbose < 1 || @printf(" %6s %12s %12s", "Iter", "|H|", "<ψ|H|ψ>")
-    verbose < 1 || @printf(" %12s", "||<[H,Gi]>||")
-    verbose < 1 || @printf(" %12s", "# Rotations")
-    verbose < 1 || @printf(" %12s", "len(H)")
-    verbose < 1 || @printf(" %12s", "total_error")
-    verbose < 1 || @printf(" %12s", "variance")
-    verbose < 1 || @printf(" %12s", "Sh Entropy")
+    ecurr = real(expectation_value(H_frozen, ψ))
+    push!(energies, ecurr)
+
+    verbose < 1 || @printf(" %6s %14s %12s %12s %8s %6s %12s %8s",
+        "Iter", "Energy", "Variance", "max|grad|", "len(U)", "active", "LBFGS_iters", "len(H)")
+    if compute_var_error
+        verbose < 1 || @printf(" %12s %12s", "E_err", "V_err")
+    end
     verbose < 1 || @printf("\n")
-    
+
     for iter in 1:max_iter
-        
-        # Compute gradient vector
-        for (pi,p) in enumerate(pool)
-            # dyad = (ψ * ψ') * p'
-            # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
-            c, σ = p*ψ
-            # grad_vec[pi] = 2*imag(matrix_element(σ', O, ψ)*c)
-            g  = matrix_element(σ', O, ψ)*c
-            g -= matrix_element(ψ', O, σ)*c'
-            # @show g
-            grad_vec[pi] = imag(g) 
+
+        # Determine the active window
+        n_total = length(generators)
+        n_active = active_window === nothing ? n_total : min(active_window, n_total)
+        active_gens = @view generators[n_frozen+1:end]
+        active_angs = @view angles[n_frozen+1:end]
+
+        # Build H_eff = H_frozen evolved through the active generators (no truncation)
+        H_eff = PauliOperators.evolve(H_frozen, collect(active_gens), collect(active_angs))
+
+        # Gradient screening in the Heisenberg picture:
+        #   ∂E/∂θ|_{θ=0} = 2 * Im⟨ψ|H_eff G|ψ⟩
+        Hxz_eff = pack_x_z(H_eff)
+        σ_eff = matvec(Hxz_eff, ψ)
+
+        grad_vec = zeros(length(pool))
+        for (pi, p) in enumerate(pool)
+            c, σ = p * ψ
+            grad_vec[pi] = 2 * imag(get(σ_eff, σ, ComplexF64(0)) * c)
         end
-        
-        Gidx = argmax(abs.(grad_vec))
-        G = pool[Gidx]
-        # G = argmax(k -> abs(f(k)), pool)
 
-        norm_new = norm(grad_vec)
-        # G = argmax(k -> abs(com[k]), keys(com))
+        max_grad = maximum(abs.(grad_vec))
 
-        # if G == G_old
-        #     println(" Trapped? ", string(G), " ", coeff)
-        #     θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=1)
-        #     # θi, costi = DBF.optimize_theta_expval(O, G, ψ, stepsize=.000001, verbose=1)
-        #     step = .1
-        #     for i in 0:.01:1
-        #         θ = i*step*2π
-        #         @printf(" θ=%12.8f cost=%12.8f\n", θ, costi(θ))
-        #     end
-        #     break
-        # end
-       
-        sorted_idx = reverse(sortperm(abs.(grad_vec)))
-
-        verbose < 2 || @printf("     %8s %12s %12s", "pool idx", "||O||", "<ψ|H|ψ>")
-        verbose < 2 || @printf(" %12s %12s %s", "len(O)", "θi", string(G))
-        verbose < 2 || @printf("\n")
-        n_rots = 0
-        for gi in sorted_idx
-
-            #
-            # make sure gradient is non-negligible
-            abs(grad_vec[gi]) > grad_coeff_thresh || continue
-
-            G = pool[gi]
-            θi, costi = DBF.optimize_theta_expval(O, G, ψ, verbose=0)
-           
-            #
-            # make sure energy lowering is large enough to warrent evolving
-            abs(costi(0) - costi(θi)) > grad_coeff_thresh || continue
-           
-
-            O = PauliOperators.evolve(O,G,θi)
-
-            #
-            # Truncate operator
-            truncate!(O, truncation, corr)
-            # if norm_new - costi(θi) > 1e-12
-            #     @show norm_new - costi(θi)
-            #     throw(ErrorException)
-            # end
-            # norm_new = costi(θi)/O_norm
-            ecurr = expectation_value(O, ψ) 
-            verbose < 2 || @printf("     %8i %12.8f %12.8f", gi, norm(O), ecurr)
-            verbose < 2 || @printf(" %12i %12.8f %s", length(O), θi, string(G))
-            verbose < 2 || @printf("\n")
-            push!(generators, G)
-            push!(angles, θi)
-            n_rots += 1
-            flush(stdout)
-        end
-        var_curr = variance(O,ψ)
-        verbose < 1 || @printf("*%6i %12.8f %12.8f %12.8f", iter, norm(O), ecurr, norm_new)
-        verbose < 1 || @printf(" %12i", n_rots)
-        verbose < 1 || @printf(" %12i", length(O))
-        verbose < 1 || @printf(" %12.8f", real(corr.accumulated_energy))
-        verbose < 1 || @printf(" %12.8f", real(var_curr))
-        verbose < 1 || @printf(" %12.8f", entropy(O))
-        verbose < 1 || @printf("\n")
-        
-        # if norm_new - norm_old < conv_thresh
-        if norm_new < conv_thresh
-            verbose < 1 || @printf(" Converged.\n")
+        if max_grad < conv_thresh
+            verbose < 1 || @printf(" Converged: max|grad| = %.2e < %.2e\n", max_grad, conv_thresh)
             break
         end
-       
-        # if norm_new > norm_old
-        #     println(" Norm increased?")
-        #     throw(ErrorException)
-        # end
+
+        # Select the operator with the largest gradient
+        Gidx = argmax(abs.(grad_vec))
+        G_new = pool[Gidx]
+        push!(generators, G_new)
+        push!(angles, 0.0)
+
+        # Freeze operators if we exceed the active window
+        if active_window !== nothing
+            while (length(generators) - n_frozen) > active_window
+                # Freeze the oldest active generator into H_frozen
+                gi = generators[n_frozen + 1]
+                θi = angles[n_frozen + 1]
+                PauliOperators.evolve!(H_frozen, gi, θi)
+                truncate!(H_frozen, operator_truncation, corr)
+                n_frozen += 1
+            end
+        end
+
+        # Re-optimize active angles
+        active_gens = generators[n_frozen+1:end]
+        active_angs = Float64.(angles[n_frozen+1:end])
+
+        res = optimize_rotation_sequence(H_frozen, active_gens, ψ,
+            initial_angles=active_angs,
+            maxiter=maxiter_lbfgs,
+            g_tol=g_tol,
+            verbose=max(0, verbose - 1))
+
+        angles[n_frozen+1:end] .= res.angles
+        ecurr = res.energy + real(corr.accumulated_energy)
+        push!(energies, ecurr)
+
+        # Compute variance on the fully evolved Hamiltonian
+        H_opt = PauliOperators.evolve(H_frozen, generators[n_frozen+1:end], Float64.(angles[n_frozen+1:end]))
+        var_curr = real(variance(H_opt, ψ))
+
+        n_active_now = length(generators) - n_frozen
+        verbose < 1 || @printf(" %6i %14.8f %12.3e %12.3e %8i %6i %12i %8i",
+            iter, ecurr, var_curr, max_grad, length(generators), n_active_now,
+            Optim.iterations(res.result), length(H_frozen))
+        if compute_var_error
+            verbose < 1 || @printf(" %12.2e %12.2e",
+                real(corr.accumulated_energy),
+                compute_var_error ? real(corr.accumulated_variance) : 0.0)
+        end
+        verbose < 1 || @printf("\n")
+
         if iter == max_iter
             verbose < 1 || @printf(" Not Converged.\n")
         end
-      
-        if n_rots == 0
-            @warn """ No search directions found. 
-                    Tighten `evolve_grad_thresh` or expand pool"""
-            break
-        end
-        norm_old = norm_new
-        # G_old = G
     end
-    return O, generators, angles
+
+    return (generators=generators, angles=angles, energies=energies,
+            H_frozen=H_frozen,
+            accumulated_error=real(corr.accumulated_energy),
+            accumulated_var_error=compute_var_error ? real(corr.accumulated_variance) : 0.0)
 end
 
 # variance(O::PauliSum, ψ::Ket) is now in PauliOperators statistics.jl

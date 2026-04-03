@@ -2,6 +2,31 @@ using PauliOperators
 using LinearAlgebra
 
 # Single-step evolve, evolve!, and KetSum evolve are now in PauliOperators
+# TODO: move evolve! for KetSum upstream to PauliOperators.jl (see agent.md)
+
+"""
+    evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
+
+In-place Schrödinger-picture evolution: K → exp(-iθ/2 G) K
+
+Modifies `K` in place. Required element type is `ComplexF64`.
+"""
+function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
+    _cos = cos(θ/2)
+    _sin = -1im*sin(θ/2)
+    GK = KetSum(N, T=ComplexF64)
+    for (k, c) in K
+        K[k] *= _cos
+        ci, ki = G * k
+        tmp = get(GK, ki, 0)
+        GK[ki] = tmp + _sin * c * ci
+    end
+    for (k, c) in GK
+        tmp = get(K, k, 0)
+        K[k] = c + tmp
+    end
+    return K
+end
 
 """
     evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};

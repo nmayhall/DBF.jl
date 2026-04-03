@@ -5,20 +5,21 @@ using Printf
 using LinearAlgebra
 using OrderedCollections
 using Polynomials: Polynomials
+using Optim: Optim
 import PauliOperators: truncate!
 
 # Hmap = FermiCG.LinOpMat{T}(matvec, length(vec), true)
 XZPauliSum{T} = Dict{Int128,Vector{Tuple{Int128,T}}}
 
 
+include("evolve.jl")
+include("schrodinger_picture.jl")
 include("helpers.jl")
 include("hamiltonians.jl")
 include("diagonalization.jl")
 include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
-include("evolve.jl")
-include("schrodinger_picture.jl")
 
 
 # Functions now exported by PauliOperators:
@@ -34,5 +35,6 @@ export pack_x_z
 export project
 export extrapolate_energy
 export plot_extrapolation
+export optimize_rotation_sequence
 
 end
