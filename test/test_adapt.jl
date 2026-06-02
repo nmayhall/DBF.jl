@@ -30,10 +30,15 @@ using Test
     
     @show variance(H,ψ)
 
-    H, gi, θi = adapt(H, pool, ψ,
+    result = adapt(H, pool, ψ,
                     max_iter=20, conv_thresh=1e-3,
-                    truncation=CoeffTruncation(1e-4))
-   
+                    operator_truncation=CoeffTruncation(1e-4))
+
+    # Reconstruct the rotated Hamiltonian by Heisenberg-evolving the original
+    # H through the optimized generator/angle sequence.
+    H = evolve(H, result.generators, result.angles;
+               truncation=CoeffTruncation(1e-4))
+
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
     println(" New H:")

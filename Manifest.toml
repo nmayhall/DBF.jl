@@ -608,9 +608,9 @@ version = "2.8.4"
 
 [[deps.PauliOperators]]
 deps = ["BenchmarkTools", "LinearAlgebra", "Printf", "Random", "StaticArrays"]
-git-tree-sha1 = "c2e37059add50e786d2d3f715192c14ab5cafb70"
+git-tree-sha1 = "6e537178d0e14b6c769aaa9dfa2acb2382799293"
 uuid = "be646426-f34c-4536-b1d4-a45a9633e6db"
-version = "3.0.0"
+version = "3.0.1"
 
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
