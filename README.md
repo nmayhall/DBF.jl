@@ -13,7 +13,7 @@ Built on [PauliOperators.jl](https://github.com/nmayhall/PauliOperators.jl) for 
 
 ```julia
 using Pkg
-Pkg.Registry.add(url="git@github.com:mayhallgroup/MayhallJuliaRegistry.git")  # one-time setup
+Pkg.Registry.add(url="https://github.com/mayhallgroup/MayhallJuliaRegistry.git")  # one-time setup
 Pkg.add("DBF")  # automatically pulls PauliOperators v3 as a dependency
 ```
 
