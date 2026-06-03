@@ -1,5 +1,8 @@
 # DBF.jl
 
+[![CI](https://github.com/nmayhall/DBF.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/nmayhall/DBF.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/nmayhall/DBF.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nmayhall/DBF.jl)
+
 **Double Bracket Flow** methods for quantum Hamiltonian diagonalization, ground state preparation, and disentanglement using Pauli operator algebra.
 
 DBF.jl works in the **Heisenberg picture**: rather than optimizing the quantum state, it iteratively applies unitary rotations to transform the Hamiltonian itself. Each rotation has the form $e^{i\theta G/2} H\, e^{-i\theta G/2}$ where $G$ is a Pauli generator. Operator truncation keeps the representation compact, enabling simulation of systems beyond the reach of exact methods. Truncation is controlled via PauliOperators.jl's composable `TruncationStrategy` type system.
