@@ -151,7 +151,7 @@ function test2()
     for (gi,ai) in zip(reverse(g),reverse(a))
         ψ1 = evolve(ψ1, gi, ai)
     end
-    H1, _, _, _, _ = DBF.evolve(H, g, a)
+    H1, _, _, _, _ = DBF.evolve_sequence(H, g, a)
     
     e1 = expectation_value(H,ψ1)
     e2 = expectation_value(H1,ψ)

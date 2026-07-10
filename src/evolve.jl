@@ -1,44 +1,22 @@
 using PauliOperators
 using LinearAlgebra
 
-# Single-step evolve, evolve!, and KetSum evolve are now in PauliOperators
-# TODO: move evolve! for KetSum upstream to PauliOperators.jl (see agent.md)
+# Single-step evolve, evolve!, and KetSum evolve/evolve! are now in PauliOperators.
+# Do NOT define unqualified `evolve`/`evolve!` methods here: that shadows the
+# PauliOperators functions inside DBF and hides all of their methods.
 
 """
-    evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
-
-In-place Schrödinger-picture evolution: K → exp(-iθ/2 G) K
-
-Modifies `K` in place. Required element type is `ComplexF64`.
-"""
-function evolve!(K::KetSum{N, ComplexF64}, G::PauliBasis{N}, θ::Real) where {N}
-    _cos = cos(θ/2)
-    _sin = -1im*sin(θ/2)
-    GK = KetSum(N, T=ComplexF64)
-    for (k, c) in K
-        K[k] *= _cos
-        ci, ki = G * k
-        tmp = get(GK, ki, 0)
-        GK[ki] = tmp + _sin * c * ci
-    end
-    for (k, c) in GK
-        tmp = get(K, k, 0)
-        K[k] = c + tmp
-    end
-    return K
-end
-
-"""
-    evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
+    evolve_sequence(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
            truncation=CompositeTruncation(CoeffTruncation(1e-3), WeightTruncation(N)),
            verbose=1, compute_var_err=false, print_n_steps=10, ψ=Ket{N}(0))
 
 Evolve `O0` through a sequence of Pauli rotations, truncating after each step.
 
+Unlike `PauliOperators.evolve(O, generators, angles)`, this records per-step data.
 The `truncation` kwarg accepts any `TruncationStrategy` from PauliOperators.
 Returns `(O, energies, variances, accumulated_error, accumulated_var_error)`.
 """
-function evolve(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
+function evolve_sequence(O0::PauliSum{N,T}, g::Vector{PauliBasis{N}}, θ::Vector{<:Real};
                 truncation::TruncationStrategy=CompositeTruncation(CoeffTruncation(1e-3), WeightTruncation(N)),
                 verbose=1,
                 compute_var_err = false,

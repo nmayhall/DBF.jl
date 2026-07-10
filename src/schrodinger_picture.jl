@@ -43,11 +43,11 @@ end
 
 function matvec(O::XZPauliSum{T}, vi::Ket{N}) where {N,T}
     s = KetSum(N, T)
-    sizehint!(s, length(O)) 
+    sizehint!(s, length(O))
 
     for (x, zs) in O
         b = Ket{N}(vi.v ⊻ x)
-        
+
         val = get(s, b, T(0))
         for (z, c) in zs
             p = PauliBasis{N}(z,x)
@@ -55,6 +55,32 @@ function matvec(O::XZPauliSum{T}, vi::Ket{N}) where {N,T}
             val += ph * c
         end
         s[b] = val
+    end
+    return s
+end
+
+"""
+    matvec(O::PauliSum{N,T}, vi::Ket{N}) where {N,T}
+
+Compute `O|vi⟩` as a `KetSum`, packing into the x-grouped `XZPauliSum`
+structure first.
+"""
+matvec(O::PauliSum{N,T}, vi::Ket{N}) where {N,T} = matvec(pack_x_z(O), vi)
+
+"""
+    matvec(O::SparsePauliVector{N,W,T}, vi::Ket{N}) where {N,W,T}
+
+Compute `O|vi⟩` as a `KetSum` in a single pass over the flat sorted storage.
+No intermediate x-grouped structure is needed: the `KetSum` accumulation
+groups terms sharing an x-string automatically.
+"""
+function matvec(O::SparsePauliVector{N,W,T}, vi::Ket{N}) where {N,W,T}
+    s = KetSum(N, T)
+    sizehint!(s, length(O))
+
+    for (p, c) in O
+        ph, b = p * vi
+        s[b] = get(s, b, T(0)) + ph * c
     end
     return s
 end
@@ -341,12 +367,39 @@ function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
         end
         e2 +=  abs2(σHψ) / (e0 - expectation_value(hd, σ))
         # c2,k2 = p*k
-        
+
         # k2 != k || error(" k==k2")
         # e2 += (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
         # e2 += 1 / (e0 - expectation_value(Hd, k2))
         # e2 += 1 / (e0)
         # @show (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
+    end
+    return e0, e2
+end
+
+"""
+    pt2(H::SparsePauliVector{N,W,T}, ψ::Ket{N}) where {N,W,T}
+
+SparsePauliVector method. Same math as the `PauliSum` method — per-x-group
+amplitude `⟨σ|H|ψ⟩` with `σ = ψ ⊻ x` — but the groups are accumulated in a
+single pass instead of building the packed `XZPauliSum` structure, and the
+denominators use the fast `SparsePauliVector` `Ket` expectation kernel.
+"""
+function pt2(H::SparsePauliVector{N,W,T}, ψ::Ket{N}) where {N,W,T}
+    Hd = diag(H)
+    e2 = T(0)
+    e0 = expectation_value(Hd, ψ)
+
+    amps = Dict{Int128, T}()
+    for (p, c) in H
+        p.x != 0 || continue
+        czx, _ = p * ψ
+        amps[p.x] = get(amps, p.x, T(0)) + czx * c
+    end
+
+    for (x, σHψ) in amps
+        σ = Ket{N}(ψ.v ⊻ x)
+        e2 += abs2(σHψ) / (e0 - expectation_value(Hd, σ))
     end
     return e0, e2
 end

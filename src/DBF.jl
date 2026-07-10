@@ -7,6 +7,7 @@ using OrderedCollections
 using Polynomials: Polynomials
 using Optim: Optim
 import PauliOperators: truncate!
+import PauliOperators: AnyPauliSum
 
 # Hmap = FermiCG.LinOpMat{T}(matvec, length(vec), true)
 XZPauliSum{T} = Dict{Int128,Vector{Tuple{Int128,T}}}

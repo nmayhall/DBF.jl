@@ -30,9 +30,15 @@ using Test
     
     @show variance(H,ψ)
 
-    H, gi, θi = adapt(H, pool, ψ,
+    res = adapt(H, pool, ψ,
                     max_iter=20, conv_thresh=1e-3,
-                    truncation=CoeffTruncation(1e-4))
+                    operator_truncation=CoeffTruncation(1e-4))
+    gi = res.generators
+    θi = res.angles
+    # No active_window ⇒ nothing was frozen: H_frozen == H and all generators
+    # are active, so the transformed Hamiltonian is H_frozen evolved through
+    # the full sequence
+    H = PauliOperators.evolve(res.H_frozen, gi, Float64.(θi))
    
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)

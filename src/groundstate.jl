@@ -8,7 +8,7 @@ Find the optimal θ that minimizes `<ψ|exp(iθ/2 G) O exp(-iθ/2 G)|ψ>`
 
 Return the optimal angle, as well as the continious function that maps θ to the expectation value.
 """
-function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; verbose=1) where {N,T}
+function optimize_theta_expval(O::AnyPauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; verbose=1) where {N,T}
     cg,ψg = G*ψ
     Oeval = expectation_value(O, ψ)
     OGeval = matrix_element(ψ', O, ψg)*cg
@@ -18,12 +18,10 @@ function optimize_theta_expval(O::PauliSum{N,T}, G::PauliBasis{N}, ψ::Ket{N}; v
         return real(cos(θ/2)^2 * Oeval + sin(θ/2)^2 * GOGeval - 2im*cos(θ/2)*sin(θ/2)*OGeval)
     end
     
-    options = Optim.Options(
-        x_reltol = 1e-12, # A tight relative tolerance for changes in the solution vector
-        f_reltol = 1e-12, # A tight relative tolerance for changes in the objective function value
-        g_tol = 1e-10,    # A tighter absolute tolerance for the gradient
-    )
-    result = optimize(cost, 0.0, 2π)
+    # Tight tolerances so θ is reproducible well below coefficient-truncation
+    # thresholds (Brent's default rel_tol of √eps ≈ 1.5e-8 lets fp noise in the
+    # inputs shift θ enough to flip downstream threshold decisions)
+    result = optimize(cost, 0.0, 2π, Optim.Brent(); rel_tol=1e-12, abs_tol=1e-12)
     # result = optimize(negative_cost, [0.0, π], Brent())
     # result = optimize(negative_cost, [0.0, π], LBFGS())
     θ = result.minimizer
@@ -82,7 +80,7 @@ minimizing `⟨ψ|H|ψ⟩`. Uses an n-body Z-projector approximation as the sour
 Both accept any `TruncationStrategy` from PauliOperators (e.g., `CoeffTruncation`,
 `WeightTruncation`, `CompositeTruncation`, etc.).
 """
-function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
+function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             n_body=1,
             initial_error = 0,
             initial_norm_error = 0,
@@ -175,7 +173,10 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf("\n")
 
     P = create_0_projector(N, n_body)
-    
+    # Match the projector's container to the input so commutator_clipped
+    # dispatches to the SparsePauliVector kernel
+    Oin isa SparsePauliVector && (P = SparsePauliVector(P; T=T))
+
     for iter in 1:max_iter
         
         time = 0
@@ -195,8 +196,7 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         grad_vec = Vector{Float64}([])
         grad_ops = Vector{PauliBasis{N}}([])
       
-        @timeit to "pack" xzO = pack_x_z(O)
-        @timeit to "matvec" σv = matvec(xzO, ψ)
+        @timeit to "matvec" σv = matvec(O, ψ)
 
         # Compute gradient vector
         time += @elapsed @timeit to "gradient" for (p,c) in G 
@@ -213,7 +213,11 @@ function dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         end
         
         
-        @timeit to "sort" sorted_idx = reverse(sortperm(abs.(grad_vec)))
+        # Descending |gradient|, with ties broken by the generator's (z,x)
+        # identity so the rotation order is deterministic and independent of
+        # the container's iteration order (Dict vs sorted storage)
+        @timeit to "sort" sorted_idx = sort(collect(eachindex(grad_vec)),
+                                            by=i -> (-abs(grad_vec[i]), grad_ops[i].z, grad_ops[i].x))
         
         verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
@@ -386,6 +390,27 @@ function commutator_clipped(O1::PauliSum{N}, O2::PauliSum{N}; thresh=1e-12) wher
             curr = get(out, PauliBasis(p3), 0.0) 
             out[PauliBasis(p3)] = curr + 2*coeff(p3)*c1*c2
         end
+        coeff_clip!(out, thresh)
+        sum!(out_tot, out)
+        coeff_clip!(out_tot, thresh)
+    end
+    return out_tot
+end
+
+"""
+    commutator_clipped(O1::SparsePauliVector{N,W,T}, O2::SparsePauliVector{N,W,T}; thresh=1e-12)
+
+SparsePauliVector method. Same per-`O1`-term clip cadence as the `PauliSum`
+method (partial commutator → clip → accumulate → clip), but each partial
+commutator uses the native bulk kernel instead of per-term sorted inserts,
+which would be quadratic on flat sorted storage.
+"""
+function commutator_clipped(O1::SparsePauliVector{N,W,T}, O2::SparsePauliVector{N,W,T}; thresh=1e-12) where {N,W,T}
+    out_tot = SparsePauliVector(N, T)
+
+    for (p1, c1) in O1
+        out = commutator(SparsePauliVector(p1; T=T), O2)
+        mul!(out, c1)
         coeff_clip!(out, thresh)
         sum!(out_tot, out)
         coeff_clip!(out_tot, thresh)
