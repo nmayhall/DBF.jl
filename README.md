@@ -100,10 +100,6 @@ PT2 corrections along the flow are off by default; pass `compute_pt2=true`
 to compute (and print) them each macro-iteration, or `compute_pt2_error=true`
 to also track the PT2 truncation error per rotation.
 
-> **Note:** `SparsePauliVector` currently requires the `sparse_pauli_vector`
-> branch of PauliOperators.jl (`Pkg.develop` or `Pkg.add(url=..., rev="sparse_pauli_vector")`);
-> the registered v3 release does not include it yet.
-
 ### ADAPT-VQE Optimization
 
 ADAPT-VQE builds a unitary ansatz one operator at a time. At each iteration it:
