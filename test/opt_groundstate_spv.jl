@@ -26,7 +26,7 @@ function run(; N=50, max_iter=20, run_paulisum=false)
 
     flow_kwargs = (verbose=1, max_iter=max_iter, conv_thresh=1e-3,
                    operator_truncation=CoeffTruncation(1e-5),
-                   gradient_truncation=CoeffTruncation(1e-5),
+                   gradient_truncation=CoeffTruncation(1e-4),
                 #    energy_lowering_thresh=1e-5,
                    compute_var_error=false)
 
@@ -54,4 +54,4 @@ function run(; N=50, max_iter=20, run_paulisum=false)
     return res_ps, res_spv
 end
 
-run()
+run(run_paulisum=true)

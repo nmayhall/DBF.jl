@@ -64,6 +64,30 @@ end
 
 
 """
+    compute_gradient!(grad_vec, grad_ops, G, σv, ψ, thresh)
+
+Fill `grad_vec`/`grad_ops` with the gradient components `2 Re(⟨σ|H|ψ⟩ c cᵢ)`
+of `G`'s terms whose magnitude exceeds `thresh`.
+
+This lives in its own function as a type-stability barrier: inlined under
+`@elapsed`/`@timeit` in `dbf_groundstate`, the loop variables get boxed and
+every iteration pays dynamic dispatch plus a heap-allocated pair — that was
+~80% of the gradient section's cost in profiling.
+"""
+function compute_gradient!(grad_vec::Vector{Float64}, grad_ops::Vector{PauliBasis{N}},
+                           G::AnyPauliSum{N,T}, σv, ψ::Ket{N}, thresh) where {N,T}
+    for (p, c) in G
+        ci, σ = p * ψ
+        gi = 2 * real(get(σv, σ, T(0)) * c * ci)
+        if abs(gi) > thresh
+            push!(grad_vec, gi)
+            push!(grad_ops, p)
+        end
+    end
+    return nothing
+end
+
+"""
     dbf_groundstate(Oin::PauliSum{N,T}, ψ::Ket{N};
         operator_truncation=CoeffTruncation(1e-6),
         gradient_truncation=CoeffTruncation(1e-6),
@@ -177,6 +201,11 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     # dispatches to the SparsePauliVector kernel
     Oin isa SparsePauliVector && (P = SparsePauliVector(P; T=T))
 
+    # Norm of O after the most recent truncation. A Pauli rotation preserves
+    # the coefficient 2-norm exactly, so this is also the pre-truncation norm
+    # of the next rotation — no need to recompute it after each evolve!
+    n_curr = norm(O)
+
     for iter in 1:max_iter
         
         time = 0
@@ -199,18 +228,8 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         @timeit to "matvec" σv = matvec(O, ψ)
 
         # Compute gradient vector
-        time += @elapsed @timeit to "gradient" for (p,c) in G 
-            # dyad = (ψ * ψ') * p'
-            # grad_vec[pi] = 2*imag(expectation_value(O,dyad))
-            ci, σ = p*ψ
-            gi = 2*real(get(σv, σ, T(0)) * c * ci)
-            # gi = 2*real(matrix_element(σ', O, ψ)*c*ci)
-            # @show expectation_value(O*p*c - c*p*O, ψ)
-            if abs(gi) > energy_lowering_thresh
-                push!(grad_vec, gi)
-                push!(grad_ops, p)
-            end
-        end
+        time += @elapsed @timeit to "gradient" compute_gradient!(
+            grad_vec, grad_ops, G, σv, ψ, energy_lowering_thresh)
         
         
         # Descending |gradient|, with ties broken by the generator's (z,x)
@@ -240,22 +259,31 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             # costi(0) - costi(θi) > energy_lowering_thresh || continue
 
 
-            # O = evolve(O,G,θi)
-            @timeit to "evolve" evolve!(O,Gi,θi)
-
-            n1 = norm(O)
+            n1 = n_curr   # == norm(O) after evolve!, by unitarity
             pt2_1 = 0
             pt2_2 = 0
-            if compute_pt2_error
-                @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
-            end
 
-            #
-            # Truncate operator
-            @timeit to "clip" truncate!(O, operator_truncation, corr)
+            # Rotate and truncate. For SparsePauliVector the sequence evolve!
+            # folds the truncation filter into the merge pass (one sweep
+            # instead of merge + separate compaction); PauliOperators
+            # documents window = 1 as exactly equivalent to
+            # evolve!(O, Gi, θi); truncate!(O, strategy, corr).
+            # The pre-truncation pt2 probe needs the unfused path.
+            if O isa SparsePauliVector && !compute_pt2_error
+                @timeit to "evolve" evolve!(O, [Gi], [θi]; window=1,
+                                            truncation=operator_truncation,
+                                            correction=corr)
+            else
+                @timeit to "evolve" evolve!(O, Gi, θi)
+                if compute_pt2_error
+                    @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
+                end
+                @timeit to "clip" truncate!(O, operator_truncation, corr)
+            end
 
             @timeit to "expval" e2 = expectation_value(O,ψ)
             n2 = norm(O)
+            n_curr = n2
             if compute_pt2_error
                 @timeit to "pt2" _, pt2_2 = pt2(O, ψ)
             end
