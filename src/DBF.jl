@@ -6,7 +6,7 @@ using LinearAlgebra
 using OrderedCollections
 using Polynomials: Polynomials
 using Optim: Optim
-import PauliOperators: truncate!
+import PauliOperators: truncate!, evolve!
 import PauliOperators: AnyPauliSum
 
 # Hmap = FermiCG.LinOpMat{T}(matvec, length(vec), true)

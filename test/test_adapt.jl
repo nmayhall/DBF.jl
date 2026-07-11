@@ -30,16 +30,15 @@ using Test
     
     @show variance(H,ψ)
 
-    res = adapt(H, pool, ψ,
+    result = adapt(H, pool, ψ,
                     max_iter=20, conv_thresh=1e-3,
                     operator_truncation=CoeffTruncation(1e-4))
-    gi = res.generators
-    θi = res.angles
-    # No active_window ⇒ nothing was frozen: H_frozen == H and all generators
-    # are active, so the transformed Hamiltonian is H_frozen evolved through
-    # the full sequence
-    H = PauliOperators.evolve(res.H_frozen, gi, Float64.(θi))
-   
+
+    # Reconstruct the rotated Hamiltonian by Heisenberg-evolving the original
+    # H through the optimized generator/angle sequence.
+    H = evolve(H, result.generators, result.angles;
+               truncation=CoeffTruncation(1e-4))
+
     e3 = real(expectation_value(H,ψ))
     @printf(" E0 = %12.8f <H> = %12.8f <U'HU> = %12.8f \n", e1, e2, e3)
     println(" New H:")
