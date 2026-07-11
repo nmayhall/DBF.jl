@@ -400,21 +400,47 @@ end
 """
     commutator_clipped(O1::SparsePauliVector{N,W,T}, O2::SparsePauliVector{N,W,T}; thresh=1e-12)
 
-SparsePauliVector method. Same per-`O1`-term clip cadence as the `PauliSum`
-method (partial commutator → clip → accumulate → clip), but each partial
-commutator uses the native bulk kernel instead of per-term sorted inserts,
-which would be quadratic on flat sorted storage.
+SparsePauliVector method of `commutator_clipped`, restructured around a key
+property: for a fixed left term `p1`, the product key map
+`p2 ↦ (z₂⊻z₁, x₂⊻x₁)` is a bijection, so a single-term partial commutator
+never contains duplicate keys. The per-`O1`-term clip can therefore be
+applied per triple at generation time (exactly equivalent to the `PauliSum`
+method's per-term `coeff_clip!` of the deduplicated partial), and all
+surviving triples are collected into one buffer for a single sort and a
+single duplicate-summing merge, instead of |O1| sorts and |O1| incremental
+merges into a growing accumulator.
+
+The only semantic difference from the `PauliSum` method is that the running
+total is not re-clipped between `O1` terms; this only matters for
+accumulated coefficients at the `thresh` (default 1e-12) dust level, far
+below any physically meaningful `gradient_truncation`.
 """
 function commutator_clipped(O1::SparsePauliVector{N,W,T}, O2::SparsePauliVector{N,W,T}; thresh=1e-12) where {N,W,T}
-    out_tot = SparsePauliVector(N, T)
+    O1.an == 0 && O2.an == 0 || error("commutator_clipped requires merged operands (no pending appends)")
 
-    for (p1, c1) in O1
-        out = commutator(SparsePauliVector(p1; T=T), O2)
-        mul!(out, c1)
-        coeff_clip!(out, thresh)
-        sum!(out_tot, out)
-        coeff_clip!(out_tot, thresh)
+    out_tot = SparsePauliVector(N, T, capacity=max(16, 2 * O2.n))
+    A = SparsePauliVector(N, T, capacity=1)
+    A.n = 1
+    pair_ws = Vector{Tuple{W,W,T}}(undef, max(16, O2.n))
+
+    ws = out_tot.ws
+    m = 0
+    @inbounds for i in 1:O1.n
+        A.z[1] = O1.z[i]
+        A.x[1] = O1.x[i]
+        A.c[1] = O1.c[i]
+        mi, ovf = PauliOperators._commutator_triples!(pair_ws, A, O2, false)
+        ovf && error("commutator pair workspace overflow — this is a bug")
+        for j in 1:mi
+            t = pair_ws[j]
+            abs(t[3]) > thresh || continue
+            m += 1
+            m > length(ws) && resize!(ws, max(2 * length(ws), m))
+            ws[m] = t
+        end
     end
+    PauliOperators._sort_ws!(ws, 1, m)
+    PauliOperators._merge_spv!(out_tot, m, PauliOperators._compile_filter(CoeffTruncation(Float64(thresh))))
     return out_tot
 end
 
