@@ -7,7 +7,7 @@
 
 DBF.jl works in the **Heisenberg picture**: rather than optimizing the quantum state, it iteratively applies unitary rotations to transform the Hamiltonian itself. Each rotation has the form $e^{i\theta G/2} H\, e^{-i\theta G/2}$ where $G$ is a Pauli generator. Operator truncation keeps the representation compact, enabling simulation of systems beyond the reach of exact methods. Truncation is controlled via PauliOperators.jl's composable `TruncationStrategy` type system.
 
-Built on [PauliOperators.jl](https://github.com/nmayhall/PauliOperators.jl) for efficient symplectic Pauli algebra (up to 128 qubits).
+Built on [PauliOperators.jl](https://github.com/nmayhall/PauliOperators.jl) for efficient symplectic Pauli algebra (up to 128 qubits). Ground state preparation accepts either of PauliOperators' two Pauli-sum representations: the `Dict`-backed `PauliSum` or the flat sorted-storage `SparsePauliVector` — a drop-in replacement that produces identical results several times faster on large operators.
 
 ## Installation
 
@@ -77,6 +77,32 @@ var = variance(H_opt, ψ)                     # should be near zero
 # Optional: compute PT2 correction for remaining truncation error
 e0, e2 = DBF.pt2(H_opt, ψ)
 ```
+
+#### SparsePauliVector backend
+
+For larger systems, convert the Hamiltonian to a `SparsePauliVector` first —
+the flow dispatches to flat-storage kernels (bulk commutators, single-pass
+matvec/pt2, merge-fused truncation) and runs several times faster with
+numerically identical results (~6x on a 50-qubit Heisenberg flow with
+operators of a few million terms; see `test/opt_groundstate_spv.jl`):
+
+```julia
+res = dbf_groundstate(SparsePauliVector(H), ψ,
+    max_iter=50,
+    conv_thresh=1e-4,
+    operator_truncation=CoeffTruncation(1e-6),
+    gradient_truncation=CoeffTruncation(1e-8))
+
+H_opt = res["hamiltonian"]        # a SparsePauliVector; PauliSum(H_opt) converts back
+```
+
+PT2 corrections along the flow are off by default; pass `compute_pt2=true`
+to compute (and print) them each macro-iteration, or `compute_pt2_error=true`
+to also track the PT2 truncation error per rotation.
+
+> **Note:** `SparsePauliVector` currently requires the `sparse_pauli_vector`
+> branch of PauliOperators.jl (`Pkg.develop` or `Pkg.add(url=..., rev="sparse_pauli_vector")`);
+> the registered v3 release does not include it yet.
 
 ### ADAPT-VQE Optimization
 
@@ -185,11 +211,14 @@ Returns the (approximately) diagonalized Hamiltonian plus the full circuit as ge
 
 Transforms $H$ so that a computational basis state $|\psi\rangle$ becomes its ground state, minimizing $\langle\psi|H|\psi\rangle$. Uses an $n$-body Z-projector approximation to $|\psi\rangle\langle\psi|$ as the source operator. Supports:
 
+- Both Pauli-sum backends: pass a `PauliSum` or a `SparsePauliVector` (one shared algorithm; the flat-storage backend dispatches to specialized commutator/matvec/pt2 kernels and fuses truncation into the rotation merge)
 - Adjustable projector body order (`n_body=1` to `6`)
 - Separate `operator_truncation` and `gradient_truncation` strategies (any `TruncationStrategy`)
 - Automatic truncation error tracking via `CorrectionAccumulator`
-- PT2 energy corrections at each macro-iteration
+- Optional PT2 energy corrections at each macro-iteration (`compute_pt2=true`)
 - JLD2 checkpointing (`checkfile` kwarg)
+
+Rotation order is deterministic: generators are applied in descending gradient magnitude, with exact ties broken by the generator's $(z, x)$ identity, so runs are reproducible and backend-independent.
 
 ### ADAPT Optimization (`adapt`)
 
@@ -244,7 +273,7 @@ trunc = CompositeTruncation(
 res = dbf_groundstate(H, ψ, operator_truncation=trunc)
 ```
 
-**Error tracking:** Functions that track truncation error (`dbf_groundstate`, `adapt`, sequence `evolve`) use PauliOperators' `CorrectionAccumulator` internally to measure $\Delta E = \langle\psi|H|\psi\rangle_\text{after} - \langle\psi|H|\psi\rangle_\text{before}$ at each truncation step. The accumulated error is returned in the results.
+**Error tracking:** Functions that track truncation error (`dbf_groundstate`, `adapt`, `evolve_sequence`) use PauliOperators' `CorrectionAccumulator` internally to measure $\Delta E = \langle\psi|H|\psi\rangle_\text{after} - \langle\psi|H|\psi\rangle_\text{before}$ at each truncation step. The accumulated error is returned in the results.
 
 ## Perturbation Theory & Subspace Methods
 
@@ -254,7 +283,7 @@ For post-processing or refinement, DBF.jl provides Schrodinger-picture utilities
 - **`cepa(H, ψ)`** -- Coupled Electron Pair Approximation via iterative linear solve (KrylovKit)
 - **`fois_ci(H, ψ)`** -- First-Order Interacting Space CI via iterative diagonalization (KrylovKit)
 
-These use the `XZPauliSum` representation (Pauli terms grouped by X-bitstring) for efficient matrix-vector products without building dense matrices.
+For `PauliSum` inputs these use the `XZPauliSum` representation (Pauli terms grouped by X-bitstring) for efficient matrix-vector products without building dense matrices; `SparsePauliVector` inputs are handled in a single pass over the flat sorted storage, with no intermediate structure.
 
 ## Exported API
 

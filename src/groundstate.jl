@@ -117,8 +117,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             max_rots_per_grad = 100,
             clifford_check = false,
             compute_var_error = true,
+            compute_pt2 = false,
             compute_pt2_error = false,
             checkfile=nothing) where {N,T}
+
+    # the pt2-error probes imply computing pt2
+    compute_pt2 |= compute_pt2_error
        
 
     O = deepcopy(Oin)
@@ -138,8 +142,11 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     accumulated_pt2_error = 0
     accumulated_norm_error = initial_norm_error
         
-    verbose < 2 || println("\n Compute PT2 correction")
-    @show e0, e2 = pt2(O, ψ)
+    e0, e2 = 0.0, 0.0
+    if compute_pt2
+        verbose < 2 || println("\n Compute PT2 correction")
+        @show e0, e2 = pt2(O, ψ)
+    end
    
     # 
     # Initialize data collection
@@ -181,7 +188,9 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     if compute_pt2_error
         verbose < 1 || @printf(" %12s", "PT_error")
     end
-    verbose < 1 || @printf(" %10s", "E(2)")
+    if compute_pt2
+        verbose < 1 || @printf(" %10s", "E(2)")
+    end
     verbose < 1 || @printf(" %12s", "norm_err")
     verbose < 1 || @printf(" %9s", "norm(G)")
     verbose < 1 || @printf(" %10s", "len([H,Z])")
@@ -312,10 +321,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
                 break
             end
         end
-        verbose < 2 || println("\n Compute PT2 correction")
-        @timeit to "pt2" e0, e2 = pt2(O, ψ)
-        verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
-        
+        if compute_pt2
+            verbose < 2 || println("\n Compute PT2 correction")
+            @timeit to "pt2" e0, e2 = pt2(O, ψ)
+            verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
+        end
+
         @timeit to "variance" var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
         verbose < 1 || @printf(" %14.8f", ecurr)
@@ -323,7 +334,9 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         if compute_pt2_error
             verbose < 1 || @printf(" %12.8f", real(accumulated_pt2_error))
         end
-        verbose < 1 || @printf(" %10.6f", real(e2))
+        if compute_pt2
+            verbose < 1 || @printf(" %10.6f", real(e2))
+        end
         verbose < 1 || @printf(" %12.8f", accumulated_norm_error)
         verbose < 1 || @printf(" %8.3e", norm(grad_vec))
         verbose < 1 || @printf(" %10i", len_comm)
