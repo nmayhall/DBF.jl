@@ -113,6 +113,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             conv_thresh=1e-3,
             operator_truncation::TruncationStrategy=CoeffTruncation(1e-6),
             gradient_truncation::TruncationStrategy=CoeffTruncation(1e-6),
+            adaptive_truncation=false,
             energy_lowering_thresh=1e-6,
             max_rots_per_grad = 100,
             clifford_check = false,
@@ -215,6 +216,8 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     # of the next rotation — no need to recompute it after each evolve!
     n_curr = norm(O)
 
+    operator_truncation_save = deepcopy(operator_truncation)
+
     for iter in 1:max_iter
         
         time = 0
@@ -241,11 +244,14 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             grad_vec, grad_ops, G, σv, ψ, energy_lowering_thresh)
         
         
-        # Descending |gradient|, with ties broken by the generator's (z,x)
-        # identity so the rotation order is deterministic and independent of
-        # the container's iteration order (Dict vs sorted storage)
+        # Descending |gradient|, quantized to 12 significant digits so that
+        # symmetry-degenerate gradients (equal in exact arithmetic, split only
+        # by fp rounding noise) compare as exact ties regardless of kernel /
+        # build / summation-order changes; ties then break canonically by the
+        # generator's (z,x) identity, independent of container iteration order.
         @timeit to "sort" sorted_idx = sort(collect(eachindex(grad_vec)),
-                                            by=i -> (-abs(grad_vec[i]), grad_ops[i].z, grad_ops[i].x))
+                                            by=i -> (-round(abs(grad_vec[i]), sigdigits=12),
+                                                     grad_ops[i].z, grad_ops[i].x))
         
         verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
@@ -255,7 +261,11 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             
             Gi = grad_ops[gi]
             @timeit to "opt_theta" θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
-         
+
+            if adaptive_truncation
+                operator_truncation = CoeffTruncation(operator_truncation_save.thresh * abs(sin(θi)))
+            end
+
             if clifford_check
                 # See if we can do a cheap clifford operation
                 if costi(0) - costi(π / 2) > energy_lowering_thresh
@@ -358,11 +368,14 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         push!(out["accumulated_var_error_per_grad"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
         push!(out["norms_per_grad"], norm(O))
 
+        # Checkpoint `out` only: it holds H0, the state, and the full
+        # (generator, angle) sequence, so the current operator is exactly
+        # reconstructible by replaying the rotations with the same
+        # truncation -- no need to pay GB-scale writes for O every iteration.
         if checkfile !== nothing
-            @save "$(checkfile).jld2" O out
+            @save "$(checkfile).jld2" out
         end
-    
-        
+
         if norm(grad_vec) < conv_thresh
             verbose < 1 || @printf(" Converged.\n")
             break

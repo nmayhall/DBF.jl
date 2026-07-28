@@ -37,5 +37,6 @@ export project
 export extrapolate_energy
 export plot_extrapolation
 export optimize_rotation_sequence
+export optimize_commuting_layer
 
 end

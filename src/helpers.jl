@@ -460,4 +460,102 @@ function optimize_rotation_sequence(H::PauliSum{N,T}, generators::Vector{PauliBa
     return (angles=result.minimizer, energy=result.minimum, result=result)
 end
 
+"""
+    optimize_commuting_layer(H, generators, ψ; initial_angles, maxiter, g_tol, verbose)
+
+Jointly optimize the angles of a layer of MUTUALLY COMMUTING Pauli rotations,
+working in the operator (Heisenberg) picture: the cost `⟨ψ|U†HU|ψ⟩` is
+evaluated by evolving `H` through the layer with no truncation. For commuting
+generators with bounded overlap (e.g. two-qubit rotations on a dimer cover of
+the lattice, or single-qubit rotations) the evolved operator stays within a
+constant factor of `length(H)`, so — unlike the state-picture
+`optimize_rotation_sequence` — this never suffers exponential KetSum growth.
+
+Because the layer commutes, the exact gradient is
+`∂E/∂θₖ = ⟨ψ| i Gₖ Oₐ |ψ⟩` with `Oₐ` the part of the FULLY evolved operator
+that anticommutes with `Gₖ` — one operator evolution per cost/gradient call.
+
+Returns `(angles, energy, result)` like `optimize_rotation_sequence`.
+"""
+function optimize_commuting_layer(H::PauliSum{N,T}, generators::Vector{PauliBasis{N}}, ψ::Ket{N};
+    initial_angles::Vector{Float64}=zeros(length(generators)),
+    maxiter::Int=200,
+    g_tol::Float64=1e-8,
+    verbose::Int=1) where {N,T}
+
+    n = length(generators)
+    length(initial_angles) == n || throw(DimensionMismatch(
+        "generators ($n) and initial_angles ($(length(initial_angles))) must have same length"))
+    for i in 1:n, j in i+1:n
+        commute(generators[i], generators[j]) || throw(ArgumentError(
+            "generators $i and $j do not commute; optimize_commuting_layer requires a mutually commuting layer"))
+    end
+
+    # site -> indices of generators supported on that site, so the gradient is
+    # a single gather pass over the evolved operator: each term contributes
+    # only to the generators its support touches (commutativity slides every
+    # derivative insertion i*G_k to the end of the sequence).
+    gens_at_site = [Int[] for _ in 1:N]
+    for (k, g) in enumerate(generators)
+        m = g.x | g.z
+        while m != 0
+            push!(gens_at_site[trailing_zeros(m)+1], k)
+            m &= m - 1
+        end
+    end
+
+    function _evolved(angles)
+        O = deepcopy(H)
+        for (g, θ) in zip(generators, angles)
+            evolve!(O, g, θ)
+        end
+        return O
+    end
+
+    function _fg!(F, Gr, angles)
+        O = _evolved(angles)
+        if Gr !== nothing
+            fill!(Gr, 0.0)
+            cand = Int[]                     # generator candidates for one term
+            for (p, c) in O
+                empty!(cand)
+                m = p.x | p.z
+                while m != 0
+                    for k in gens_at_site[trailing_zeros(m)+1]
+                        k in cand || push!(cand, k)
+                    end
+                    m &= m - 1
+                end
+                for k in cand
+                    g = generators[k]
+                    commute(p, g) && continue
+                    co, kq = (g * p) * ψ     # i*G_k*(anticommuting part), on |ψ⟩
+                    kq == ψ || continue
+                    Gr[k] += real(im * c * co)
+                end
+            end
+        end
+        return F === nothing ? nothing : real(expectation_value(O, ψ))
+    end
+
+    options = Optim.Options(iterations=maxiter, g_tol=g_tol, store_trace=verbose >= 2)
+    result = Optim.optimize(Optim.only_fg!(_fg!), collect(Float64, initial_angles),
+                            Optim.LBFGS(), options)
+
+    if verbose >= 2
+        @printf(" %4s %14s %12s\n", "iter", "energy", "g_norm")
+        for t in Optim.trace(result)
+            @printf(" %4i %14.8f %12.2e\n", t.iteration, t.value, t.g_norm)
+        end
+    end
+    if verbose >= 1
+        @printf(" Layer-optimized energy: %14.8f  (iterations: %i, |g|=%.1e)\n",
+                result.minimum, Optim.iterations(result), Optim.g_residual(result))
+        Optim.iteration_limit_reached(result) &&
+            @warn "LBFGS iteration limit reached. Consider increasing `maxiter`."
+    end
+
+    return (angles=result.minimizer, energy=result.minimum, result=result)
+end
+
 # KetSum +/- KetSum are now in PauliOperators addition.jl
