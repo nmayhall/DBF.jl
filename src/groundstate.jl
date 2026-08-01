@@ -249,9 +249,17 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         # by fp rounding noise) compare as exact ties regardless of kernel /
         # build / summation-order changes; ties then break canonically by the
         # generator's (z,x) identity, independent of container iteration order.
-        @timeit to "sort" sorted_idx = sort(collect(eachindex(grad_vec)),
-                                            by=i -> (-round(abs(grad_vec[i]), sigdigits=12),
-                                                     grad_ops[i].z, grad_ops[i].x))
+        # Keys are precomputed (sort's `by` runs per COMPARISON, and round
+        # with sigdigits is expensive), and only the top max_rots_per_grad
+        # entries are selected -- the rotation loop below consumes exactly
+        # that many and never skips, so a full sort of the pool is wasted.
+        # NOTE: if the loop ever re-grows a skip/continue branch, widen this.
+        @timeit to "sort" begin
+            sort_keys = [(-round(abs(grad_vec[i]), sigdigits=12),
+                          grad_ops[i].z, grad_ops[i].x) for i in eachindex(grad_vec)]
+            sorted_idx = partialsortperm(sort_keys,
+                                         1:min(max_rots_per_grad, length(sort_keys)))
+        end
         
         verbose < 2 || @printf("     %8s %12s %12s", "G idx", "||O||", "<ψ|H|ψ>")
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
