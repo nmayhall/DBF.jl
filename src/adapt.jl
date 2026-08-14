@@ -461,13 +461,23 @@ end
 
 function entropy(O)
 
-    # S = -sum_i |c_i|^2 log(|c_i|^2)
-    # S(x) = 
-    s = 0
-    n = norm(O)
-    for (_,c) in O
-        p = abs2(c)/n^2
-        s -= p*log(p)
+    # S = -sum_i p_i log(p_i) over the NON-identity Pauli weight distribution,
+    # p_i = |c_i|^2 / sum_j |c_j|^2. The identity coefficient is excluded:
+    # it is just a constant shift (huge for ab initio Hamiltonians, where it
+    # carries the core energy), which would pin p_I ~ 1 and squash S to ~0
+    # while saying nothing about the operator's structure.
+    s = 0.0
+    n2 = 0.0
+    for (p, c) in O
+        (p.z == 0 && p.x == 0) && continue
+        n2 += abs2(c)
+    end
+    n2 > 0 || return 0.0
+    for (p, c) in O
+        (p.z == 0 && p.x == 0) && continue
+        w = abs2(c) / n2
+        w > 0 || continue
+        s -= w * log(w)
     end
     return s
 end

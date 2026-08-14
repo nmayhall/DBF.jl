@@ -124,7 +124,30 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
 
     # the pt2-error probes imply computing pt2
     compute_pt2 |= compute_pt2_error
-       
+
+    # Document the exact settings of this run in the output stream
+    if verbose >= 1
+        println("\n ===== dbf_groundstate parameters =====")
+        @printf("   %-24s %s\n", "N (qubits)", string(N))
+        @printf("   %-24s %s\n", "coeff type", string(T))
+        @printf("   %-24s %s\n", "len(H0)", string(length(Oin)))
+        @printf("   %-24s %s\n", "n_body", string(n_body))
+        @printf("   %-24s %s\n", "max_iter", string(max_iter))
+        @printf("   %-24s %s\n", "conv_thresh", string(conv_thresh))
+        @printf("   %-24s %s\n", "operator_truncation", string(operator_truncation))
+        @printf("   %-24s %s\n", "gradient_truncation", string(gradient_truncation))
+        @printf("   %-24s %s\n", "adaptive_truncation", string(adaptive_truncation))
+        @printf("   %-24s %s\n", "energy_lowering_thresh", string(energy_lowering_thresh))
+        @printf("   %-24s %s\n", "max_rots_per_grad", string(max_rots_per_grad))
+        @printf("   %-24s %s\n", "clifford_check", string(clifford_check))
+        @printf("   %-24s %s\n", "compute_var_error", string(compute_var_error))
+        @printf("   %-24s %s\n", "compute_pt2", string(compute_pt2))
+        @printf("   %-24s %s\n", "compute_pt2_error", string(compute_pt2_error))
+        @printf("   %-24s %s\n", "initial_error", string(initial_error))
+        @printf("   %-24s %s\n", "initial_norm_error", string(initial_norm_error))
+        @printf("   %-24s %s\n", "checkfile", string(checkfile))
+        println(" ======================================\n")
+    end
 
     O = deepcopy(Oin)
     generators = Vector{PauliBasis{N}}([])
@@ -198,7 +221,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     verbose < 1 || @printf(" %8s", "len(G)")
     verbose < 1 || @printf(" %8s", "len(H)")
     verbose < 1 || @printf(" %4s", "#Rot")
-    verbose < 1 || @printf(" %8s", "variance")
+    verbose < 1 || @printf(" %10s", "variance")
     if compute_var_error
         verbose < 1 || @printf(" %12s", "var_error")
     end
@@ -361,7 +384,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         verbose < 1 || @printf(" %8i", length(grad_vec))
         verbose < 1 || @printf(" %8i", length(O))
         verbose < 1 || @printf(" %4i", n_rots)
-        verbose < 1 || @printf(" %8.4f", real(var_curr))
+        verbose < 1 || @printf(" %10.6f", real(var_curr))
         if compute_var_error
             verbose < 1 || @printf(" %12.8f", compute_var_error ? real(corr.accumulated_variance) : 0.0)
         end
