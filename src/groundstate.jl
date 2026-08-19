@@ -103,6 +103,17 @@ minimizing `⟨ψ|H|ψ⟩`. Uses an n-body Z-projector approximation as the sour
 
 Both accept any `TruncationStrategy` from PauliOperators (e.g., `CoeffTruncation`,
 `WeightTruncation`, `CompositeTruncation`, etc.).
+
+# Checkpointing
+`checkfile=nothing` (default) disables checkpointing. Otherwise
+`<checkfile>.jld2` is rewritten every iteration with a replay payload: `H0`
+(stored as a plain `PauliSum`), `state`, `generators`, `angles` and the
+per-rotation / per-iteration histories -- the same keys as the returned `out`
+except that the live operator's scratch buffers are never written.
+
+# Timing
+The `Time` column is the wall time of the full iteration (commutator through
+checkpoint); the `TimerOutputs` table printed at the end breaks it down.
 """
 function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             n_body=1,
@@ -234,6 +245,19 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     # dispatches to the SparsePauliVector kernel
     Oin isa SparsePauliVector && (P = SparsePauliVector(P; T=T))
 
+    # Checkpoint payload: what is needed to replay the trajectory -- H0, the
+    # state and the (generator, angle) sequence plus the small per-rotation
+    # histories. It shares the history arrays with `out` (shallow copy), so
+    # saving it each iteration is up to date, but H0 is stored once as a plain
+    # PauliSum: a SparsePauliVector serializes all of its scratch buffers
+    # (~8x the live terms; 25 GB for a 65M-term H), which made the per-
+    # iteration @save the dominant cost of large runs.
+    out_ckpt = nothing
+    if checkfile !== nothing
+        out_ckpt = copy(out)
+        out_ckpt["H0"] = Oin isa SparsePauliVector ? PauliSum(Oin) : Oin
+    end
+
     # Norm of O after the most recent truncation. A Pauli rotation preserves
     # the coefficient 2-norm exactly, so this is also the pre-truncation norm
     # of the next rotation — no need to recompute it after each evolve!
@@ -243,10 +267,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
 
     for iter in 1:max_iter
         
-        time = 0
+        # Wall time of the whole iteration (commutator through checkpoint);
+        # this is what the "Time" column reports.
+        t_iter = time_ns()
        
         # Create the iteration dependent pool
-        time += @elapsed @timeit to "commutator" G = commutator_clipped(P,O)
+        @timeit to "commutator" G = commutator_clipped(P,O)
         
         len_comm = length(G)
         verbose < 2 || @printf(" length of commutator: %i\n", len_comm)
@@ -263,7 +289,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         @timeit to "matvec" σv = matvec(O, ψ)
 
         # Compute gradient vector
-        time += @elapsed @timeit to "gradient" compute_gradient!(
+        @timeit to "gradient" compute_gradient!(
             grad_vec, grad_ops, G, σv, ψ, energy_lowering_thresh)
         
         
@@ -288,7 +314,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         verbose < 2 || @printf(" %12s %12s", "len(O)", "θi")
         verbose < 2 || @printf("\n")
         n_rots = 0
-        time += @elapsed for gi in sorted_idx
+        for gi in sorted_idx
             
             Gi = grad_ops[gi]
             @timeit to "opt_theta" θi, costi = DBF.optimize_theta_expval(O, Gi, ψ, verbose=0)
@@ -352,7 +378,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             push!(out["accumulated_var_error"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
             push!(out["energies"], ecurr)
             if compute_var_error
-                push!(out["variances"], real(variance(O, ψ)))
+                @timeit to "variance" push!(out["variances"], real(variance(O, ψ)))
             end
             push!(out["norms"], n2)
             push!(out["generators"], Gi) 
@@ -388,9 +414,8 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         if compute_var_error
             verbose < 1 || @printf(" %12.8f", compute_var_error ? real(corr.accumulated_variance) : 0.0)
         end
-        verbose < 1 || @printf(" %8.4f", entropy(O))
-        verbose < 1 || @printf(" %8.2f", time)
-        verbose < 1 || @printf("\n")
+        verbose < 1 || @printf(" %8.4f", @timeit(to, "entropy", entropy(O)))
+        # Time column is filled in below, after the checkpoint save
         
         push!(out["pt2_per_grad"], real(e2))
         push!(out["accumulated_error_per_grad"], corr.accumulated_energy)
@@ -404,8 +429,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         # reconstructible by replaying the rotations with the same
         # truncation -- no need to pay GB-scale writes for O every iteration.
         if checkfile !== nothing
-            @save "$(checkfile).jld2" out
+            @timeit to "checkpoint" @save "$(checkfile).jld2" out=out_ckpt
         end
+
+        verbose < 1 || @printf(" %8.2f", (time_ns() - t_iter) / 1e9)
+        verbose < 1 || @printf("\n")
+        flush(stdout)
 
         if norm(grad_vec) < conv_thresh
             verbose < 1 || @printf(" Converged.\n")

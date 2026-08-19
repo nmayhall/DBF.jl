@@ -4,6 +4,7 @@ using Printf
 using Random
 using LinearAlgebra
 using Test
+using JLD2
 
 @testset "spv unit equivalence" begin
     for (N, args, kwargs) in [(3, (1, 2, 3), (z=.1,)), (6, (-1, -2, -3), (x=.3,))]
@@ -105,6 +106,16 @@ end
 
     @test isfile("$(checkfile).jld2")
     @test isapprox(res_ps["energies"][end], res_spv["energies"][end], atol=1e-5)
+
+    # Checkpoint holds the replay payload: H0 as a plain PauliSum (no SPV
+    # scratch buffers), the state and the full generator/angle sequence
+    ck = load("$(checkfile).jld2", "out")
+    @test ck["H0"] isa PauliSum
+    @test length(ck["H0"]) == length(H)
+    @test all(isapprox(ck["H0"][p], c) for (p, c) in H)
+    @test ck["generators"] == res_spv["generators"]
+    @test ck["angles"] == res_spv["angles"]
+    @test !haskey(ck, "hamiltonian")
 
     # Eigenvalues preserved (up to truncation error) by the SPV flow
     evals3 = eigvals(Matrix(PauliSum(res_spv["hamiltonian"])))
