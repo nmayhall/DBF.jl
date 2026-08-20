@@ -212,85 +212,47 @@ function PauliOperators.KetSum(basis::Vector{Ket{N}}; T=Float64) where N
     return KetSum{N,T}(basis .=> zeros(T,length(basis)))
 end
 
-"""
-    cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=1e-6) where N
-
-PHPc + PHQc = EPc
-QHPc + QHQc = EQc
-
-or 
-
-PHPc +  0   + PHRc = EPc
- 0     QHQc + QHRc = EQc
-RHPc + RHQc + RHRc = ERc
-
-Qc = (EQ-QHQ)^-1 QHRc
-
-RHPc + RHQ (EQ-QHQ)^-1 QHRc + RHRc = ERc
-
-RHPc = (E - RHR - RHQ * (EQ-QHQ)^-1 QHR) Rc
-(E - RHR - RHQ * (EQ-QHQ)^-1 QHR)^-1 RHPc = Rc
-
-PHPc + PHR (E - RHR - RHQ * (EQ-QHQ)^-1 QHR)^-1 RHPc = EPc
-
-
-
-RHPc + RHQc = (ER-RHR)Rc
-(ER-RHR)^-1 RHPc + (ER-RHR)^-1 RHQc = Rc
-
-PHPc + PHR (E-RHR)^-1 RHPc + PHP (ER-RHR)^-1 RHQc = EPc  
-
-(EQ-QHQ)Qc = QHRc
-pinv(QHR)(EQ-QHQ)Qc = Rc
-
-P = |v><v|
-Q = |wi><wi| + |x><x|
-QHPc = (EQ - QHQ)Qc     : b = Ax
-Qc = (EQ - QHQ)^-1 QHPc 
-cPHPc + cPHQ (EQ-QHQ)^-1 QHPc = E
-
-E0 + cPH(E-EP - H)
-"""
-function cepa(H::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, x0=nothing, tol=1e-6) where N
-
-    ref_basis = [ref]
-    vref = KetSum(ref_basis)
-    fill!(vref, [1], ref_basis)
-    b = DBF.matvec(pack_x_z(H), vref)
-    coeff_clip!(b, thresh)
-    delete!(b, ref)
-    basis = collect(keys(b))
-    e0 = expectation_value(H, ref)
-    A = pack_x_z(e0*Pauli(N) - H)
-    
-    verbose < 1 || @printf(" Size of basis: %i\n", length(basis)) 
-    
-    # Amat = Matrix(A, basis)
-    bvec = Vector(b, basis)
-
-    # e = e0 + bvec'*pinv(diagm(diag(Amat)))*bvec
-    # e = e0 + bvec'*pinv(Amat)*bvec
-    # @printf(" e0 = %12.8f e(cepa) = %12.8f\n", e0, e)
-    
-    Amap = LinearMap(A, basis)
-    xguess = zeros(length(basis))
-    
-    if x0 !== nothing
-        xguess = Vector(project(x0, basis), basis)
-    end
-    
-    time = @elapsed x, info = KrylovKit.linsolve(Amap, bvec, xguess,
-                                            verbosity   = verbose,
-                                            maxiter     = 10,
-                                            issymmetric = true,
-                                            ishermitian = true,
-                                            tol         = tol)
-
-    e = e0 + x' * bvec
-
-    @printf(" E0 = %12.8f E(cepa) = %12.8f dim: %8i\n", e0, real(e), length(basis))
-    return e0, e, x, basis
-end
+# The CEPA/Lowdin-partitioning derivation this file used to carry, kept for
+# reference. The implementation now lives in estimators.jl, built on a
+# once-and-for-all sparse subspace matrix rather than a matrix-free Krylov
+# solve -- see `subspace_estimates`.
+#
+#
+# PHPc + PHQc = EPc
+# QHPc + QHQc = EQc
+#
+# or 
+#
+# PHPc +  0   + PHRc = EPc
+#  0     QHQc + QHRc = EQc
+# RHPc + RHQc + RHRc = ERc
+#
+# Qc = (EQ-QHQ)^-1 QHRc
+#
+# RHPc + RHQ (EQ-QHQ)^-1 QHRc + RHRc = ERc
+#
+# RHPc = (E - RHR - RHQ * (EQ-QHQ)^-1 QHR) Rc
+# (E - RHR - RHQ * (EQ-QHQ)^-1 QHR)^-1 RHPc = Rc
+#
+# PHPc + PHR (E - RHR - RHQ * (EQ-QHQ)^-1 QHR)^-1 RHPc = EPc
+#
+#
+#
+# RHPc + RHQc = (ER-RHR)Rc
+# (ER-RHR)^-1 RHPc + (ER-RHR)^-1 RHQc = Rc
+#
+# PHPc + PHR (E-RHR)^-1 RHPc + PHP (ER-RHR)^-1 RHQc = EPc  
+#
+# (EQ-QHQ)Qc = QHRc
+# pinv(QHR)(EQ-QHQ)Qc = Rc
+#
+# P = |v><v|
+# Q = |wi><wi| + |x><x|
+# QHPc = (EQ - QHQ)Qc     : b = Ax
+# Qc = (EQ - QHQ)^-1 QHPc 
+# cPHPc + cPHQ (EQ-QHQ)^-1 QHPc = E
+#
+# E0 + cPH(E-EP - H)
 
 """
     fois_ci(Hin::PauliSum, ref::Ket{N}; thresh=1e-4, verbose=4, v0=nothing, tol=1e-6, max_iter=10) where N

@@ -21,6 +21,7 @@ include("diagonalization.jl")
 include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
+include("estimators.jl")
 
 
 # Functions now exported by PauliOperators:
@@ -38,5 +39,12 @@ export extrapolate_energy
 export plot_extrapolation
 export optimize_rotation_sequence
 export optimize_commuting_layer
+export subspace_sparse
+export subspace_estimates
+export cepa
+export cmx2
+export best_reference
+export cmx_moments
+export cmx_energy
 
 end

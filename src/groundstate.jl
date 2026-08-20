@@ -104,6 +104,22 @@ minimizing `⟨ψ|H|ψ⟩`. Uses an n-body Z-projector approximation as the sour
 Both accept any `TruncationStrategy` from PauliOperators (e.g., `CoeffTruncation`,
 `WeightTruncation`, `CompositeTruncation`, etc.).
 
+# Correlation estimates
+`compute_cepa` / `compute_cmx` add a per-iteration CEPA and CMX(2) estimate over
+the reference, recorded in `out["cepa_per_grad"]` / `out["cmx2_per_grad"]`. They
+share one subspace build, so turning both on costs barely more than one. These
+two are chosen because they are the size-extensive members of the estimator
+family -- FOIS-CI and PDS are not, and their error grows with system size, which
+makes them useless for reading a trend. `estimator_thresh` clips the first-order
+interacting space (and hence the moments); tighten it until the curve stops
+moving.
+
+With a sound reference the correction is worth roughly 13-15 flow iterations of
+head start on `⟨ψ|H|ψ⟩`, though it plateaus rather than converging faster
+asymptotically. With a poor reference it is worth very little, so screen the
+reference first -- see [`best_reference`](@ref), and watch `variance` rather
+than the overlap, which is capped and misleading under a `Z₂` symmetry.
+
 # Checkpointing
 `checkfile=nothing` (default) disables checkpointing. Otherwise
 `<checkfile>.jld2` is rewritten every iteration with a replay payload: `H0`
@@ -131,6 +147,13 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             compute_var_error = true,
             compute_pt2 = false,
             compute_pt2_error = false,
+            compute_cepa = false,
+            compute_cmx = false,
+            estimator_thresh = 1e-4,
+            estimator_stride = 1,
+            estimator_max_dim = 0,
+            cmx_error = false,
+            initial_cmx_error = 0.0,
             checkfile=nothing) where {N,T}
 
     # the pt2-error probes imply computing pt2
@@ -154,6 +177,16 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         @printf("   %-24s %s\n", "compute_var_error", string(compute_var_error))
         @printf("   %-24s %s\n", "compute_pt2", string(compute_pt2))
         @printf("   %-24s %s\n", "compute_pt2_error", string(compute_pt2_error))
+        @printf("   %-24s %s\n", "compute_cepa", string(compute_cepa))
+        @printf("   %-24s %s\n", "compute_cmx", string(compute_cmx))
+        if compute_cepa || compute_cmx
+            @printf("   %-24s %s\n", "estimator_thresh", string(estimator_thresh))
+            @printf("   %-24s %s\n", "estimator_stride", string(estimator_stride))
+            @printf("   %-24s %s\n", "estimator_max_dim", string(estimator_max_dim))
+        end
+        @printf("   %-24s %s\n", "cmx_error", string(cmx_error))
+        if false
+        end
         @printf("   %-24s %s\n", "initial_error", string(initial_error))
         @printf("   %-24s %s\n", "initial_norm_error", string(initial_norm_error))
         @printf("   %-24s %s\n", "checkfile", string(checkfile))
@@ -176,11 +209,30 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     end
     accumulated_pt2_error = 0
     accumulated_norm_error = initial_norm_error
+    # Truncation error measured on the CMX(2) ground-state estimate rather than
+    # on <psi|H|psi>: err_i = cmx(A_i) - cmx(O_i) across each truncation, A_i
+    # being the truncated operator. Moments are polynomial in O, so this delta
+    # is EXACT -- unlike a first-order response, which breaks down for exactly
+    # the large early rotations that carry most of the damage.
+    accumulated_cmx_error = Float64(initial_cmx_error)
+    cmx_curr = 0.0
         
     e0, e2 = 0.0, 0.0
     if compute_pt2
         verbose < 2 || println("\n Compute PT2 correction")
         @show e0, e2 = pt2(O, ψ)
+    end
+
+    # CEPA and CMX(2) share one subspace build, so ask for both whenever either
+    # is on. They are the size-extensive members of the estimator family, which
+    # is what makes them meaningful to track across a flow; FOIS-CI and PDS are
+    # not, and drift with system size.
+    e_cepa, e_cmx2, est_dim = ecurr, ecurr, 0
+    if compute_cepa || compute_cmx
+        verbose < 2 || println("\n Compute CEPA / CMX(2) estimates")
+        est = subspace_estimates(O, ψ, thresh=estimator_thresh, max_dim=estimator_max_dim,
+                                 verbose=verbose-1)
+        e_cepa, e_cmx2, est_dim = est.cepa, est.cmx2, est.dim
     end
    
     # 
@@ -201,6 +253,18 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     out["accumulated_error_per_grad"] = Vector{Float64}([])
     out["norms_per_grad"] = Vector{Float64}([])
     out["pt2_per_grad"] = Vector{Float64}([])
+    out["cepa_per_grad"] = Vector{Float64}([])
+    out["cmx2_per_grad"] = Vector{Float64}([])
+    out["est_dim_per_grad"] = Vector{Int}([])
+    # Truncation diagnostics: `accumulated_norm_error` is the running sum of
+    # ||O||^2 lost to truncation (a rotation preserves the coefficient 2-norm
+    # exactly, so all of it is truncation). It was previously printed but never
+    # stored, which made it impossible to regress an estimator's drift against
+    # what the flow actually discarded.
+    out["norm_error_per_grad"] = Vector{Float64}([])
+    out["cmx_error_per_grad"] = Vector{Float64}([])
+    out["cmx_per_grad"] = Vector{Float64}([])
+    out["entropy_per_grad"] = Vector{Float64}([])
     out["variance_per_grad"] = Vector{Float64}([])
     out["accumulated_var_error_per_grad"] = Vector{Float64}([])
 
@@ -213,6 +277,13 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     push!(out["energies_per_grad"], ecurr)
     push!(out["accumulated_error_per_grad"], initial_error)
     push!(out["pt2_per_grad"], real(e2))
+    push!(out["cepa_per_grad"], real(e_cepa))
+    push!(out["cmx2_per_grad"], real(e_cmx2))
+    push!(out["est_dim_per_grad"], est_dim)
+    push!(out["norm_error_per_grad"], accumulated_norm_error)
+    push!(out["cmx_error_per_grad"], accumulated_cmx_error)
+    push!(out["cmx_per_grad"], cmx_error ? cmx_energy(cmx_moments(O, ψ)...) : 0.0)
+    push!(out["entropy_per_grad"], entropy(O))
     push!(out["variance_per_grad"], variance(O,ψ))
     push!(out["accumulated_var_error_per_grad"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
     push!(out["norms_per_grad"], norm(O))
@@ -225,6 +296,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     end
     if compute_pt2
         verbose < 1 || @printf(" %10s", "E(2)")
+    end
+    if compute_cepa
+        verbose < 1 || @printf(" %14s", "E(cepa)")
+    end
+    if compute_cmx
+        verbose < 1 || @printf(" %14s", "E(cmx2)")
     end
     verbose < 1 || @printf(" %12s", "norm_err")
     verbose < 1 || @printf(" %9s", "norm(G)")
@@ -345,7 +422,8 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             # documents window = 1 as exactly equivalent to
             # evolve!(O, Gi, θi); truncate!(O, strategy, corr).
             # The pre-truncation pt2 probe needs the unfused path.
-            if O isa SparsePauliVector && !compute_pt2_error
+            cmx_pre = 0.0
+            if O isa SparsePauliVector && !compute_pt2_error && !cmx_error
                 @timeit to "evolve" evolve!(O, [Gi], [θi]; window=1,
                                             truncation=operator_truncation,
                                             correction=corr)
@@ -354,6 +432,11 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
                 if compute_pt2_error
                     @timeit to "pt2" _, pt2_1 = pt2(O, ψ)
                 end
+                # AFTER the rotation, BEFORE the truncation: err_i must isolate
+                # the truncation. Probing before evolve! instead makes err_i
+                # capture rotation+truncation, so the accumulated sum telescopes
+                # back to cmx(H0) exactly and measures nothing.
+                cmx_pre = cmx_error ? cmx_energy(@timeit(to, "cmx_error", cmx_moments(O, ψ))...) : 0.0
                 @timeit to "clip" truncate!(O, operator_truncation, corr)
             end
 
@@ -364,6 +447,11 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
                 @timeit to "pt2" _, pt2_2 = pt2(O, ψ)
             end
 
+            if cmx_error
+                cmx_post = cmx_energy(@timeit(to, "cmx_error", cmx_moments(O, ψ))...)
+                accumulated_cmx_error += cmx_post - cmx_pre
+                cmx_curr = cmx_post
+            end
             accumulated_pt2_error += pt2_2 - pt2_1
             accumulated_norm_error += n2^2 - n1^2
 
@@ -393,6 +481,18 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             @timeit to "pt2" e0, e2 = pt2(O, ψ)
             verbose < 2 || @printf(" E0 = %12.8f E2 = %12.8f EPT2 = %12.8f \n", e0, e2, e0+e2)
         end
+        if compute_cepa || compute_cmx
+            # Skipped iterations record NaN rather than carrying the previous
+            # value forward: a repeated value would be read as a converged
+            # plateau by any downstream fit. Filter with isfinite.
+            if iter % estimator_stride == 0 || iter == max_iter
+                @timeit to "estimators" est = subspace_estimates(O, ψ, thresh=estimator_thresh,
+                                                    max_dim=estimator_max_dim, verbose=verbose-1)
+                e_cepa, e_cmx2, est_dim = est.cepa, est.cmx2, est.dim
+            else
+                e_cepa, e_cmx2, est_dim = NaN, NaN, 0
+            end
+        end
 
         @timeit to "variance" var_curr = variance(O,ψ)
         verbose < 1 || @printf("*%6i", iter)
@@ -404,6 +504,12 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         if compute_pt2
             verbose < 1 || @printf(" %10.6f", real(e2))
         end
+        if compute_cepa
+            verbose < 1 || @printf(" %14.8f", real(e_cepa))
+        end
+        if compute_cmx
+            verbose < 1 || @printf(" %14.8f", real(e_cmx2))
+        end
         verbose < 1 || @printf(" %12.8f", accumulated_norm_error)
         verbose < 1 || @printf(" %8.3e", norm(grad_vec))
         verbose < 1 || @printf(" %10i", len_comm)
@@ -414,10 +520,18 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         if compute_var_error
             verbose < 1 || @printf(" %12.8f", compute_var_error ? real(corr.accumulated_variance) : 0.0)
         end
-        verbose < 1 || @printf(" %8.4f", @timeit(to, "entropy", entropy(O)))
+        ent_curr = @timeit(to, "entropy", entropy(O))
+        verbose < 1 || @printf(" %8.4f", ent_curr)
         # Time column is filled in below, after the checkpoint save
         
         push!(out["pt2_per_grad"], real(e2))
+        push!(out["cepa_per_grad"], real(e_cepa))
+        push!(out["cmx2_per_grad"], real(e_cmx2))
+        push!(out["est_dim_per_grad"], est_dim)
+        push!(out["norm_error_per_grad"], accumulated_norm_error)
+        push!(out["cmx_error_per_grad"], accumulated_cmx_error)
+        push!(out["cmx_per_grad"], cmx_curr)
+        push!(out["entropy_per_grad"], ent_curr)
         push!(out["accumulated_error_per_grad"], corr.accumulated_energy)
         push!(out["energies_per_grad"], ecurr)
         push!(out["variance_per_grad"], var_curr)

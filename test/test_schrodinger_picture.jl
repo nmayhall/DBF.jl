@@ -14,7 +14,7 @@ using KrylovKit
     Random.seed!(2)
     N = 9
     H = rand(PauliSum{N}, n_paulis=100)
-    DBF.coeff_clip!(H)
+    DBF.coeff_clip!(H, 1e-16)
     H += H'
 
     xzH = DBF.pack_x_z(H)
@@ -123,7 +123,7 @@ end
     end
     vvec = rand(length(basis))
     vvec = vvec/norm(vvec)
-    v = KetSum(basis)
+    v = KetSum(basis, T=ComplexF64)
     fill!(v,vvec,basis)
     s = DBF.subspace_matvec(pack_x_z(H),v)
     sfull = DBF.matvec(pack_x_z(H),v)
