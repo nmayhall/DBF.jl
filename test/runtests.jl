@@ -12,4 +12,5 @@ using Test
     include("test_groundstate_spv.jl")
     include("test_adapt.jl")
     include("test_helpers.jl")
+    include("test_resume.jl")
 end

@@ -115,6 +115,67 @@ except that the live operator's scratch buffers are never written.
 The `Time` column is the wall time of the full iteration (commutator through
 checkpoint); the `TimerOutputs` table printed at the end breaks it down.
 """
+# =============================================================================
+#  Resumable operator snapshots
+# =============================================================================
+#
+#  `checkfile` stores a REPLAY record -- H0 plus the (generator, angle)
+#  sequence -- so restarting from it means re-running every rotation. For the
+#  tight-truncation runs that is a large fraction of the run being resumed.
+#  These snapshots instead capture the flowed operator itself, so a job stopped
+#  by a walltime limit continues from where it stopped.
+#
+#  A SparsePauliVector is written as its LIVE SLICES ONLY (z[1:n], x[1:n],
+#  c[1:n]). Serializing the struct whole would also write the append, scratch
+#  and workspace buffers -- several times the live term count -- and converting
+#  to PauliSum would pay to build a Dict of ~10^8 entries. Both are avoided.
+#  The slices are already in the canonical sorted order the type maintains, and
+#  are restored in that same order, so the invariant survives the round trip.
+
+_snapshot_operator(O::SparsePauliVector{N,W,T}) where {N,W,T} =
+    Dict{String,Any}("kind" => "spv", "N" => N, "n" => O.n,
+                     "z" => O.z[1:O.n], "x" => O.x[1:O.n], "c" => O.c[1:O.n])
+
+_snapshot_operator(O::PauliSum) = Dict{String,Any}("kind" => "psum", "op" => O)
+
+function _restore_operator(p::Dict)
+    p["kind"] == "psum" && return p["op"]
+    n = p["n"]::Int
+    v = SparsePauliVector(p["N"]::Int, eltype(p["c"]); capacity = max(n, 1))
+    copyto!(v.z, 1, p["z"], 1, n)
+    copyto!(v.x, 1, p["x"], 1, n)
+    copyto!(v.c, 1, p["c"], 1, n)
+    v.n = n
+    return v
+end
+
+"""
+    save_resume_state(path, O, corr, out, iter, acc)
+
+Atomically write a resumable snapshot. The write goes to `path * ".tmp"` and is
+then renamed, so a job killed mid-write leaves the previous good snapshot
+intact rather than a truncated file.
+
+`out["H0"]` is dropped: it is re-supplied from `Oin` by the resuming call, and
+storing a SparsePauliVector H0 would drag its scratch buffers along.
+"""
+function save_resume_state(path, O, corr, out, iter, acc)
+    hist = copy(out)                 # shallow: shares the history arrays
+    delete!(hist, "H0")
+    tmp = path * ".tmp"
+    jldsave(tmp;
+            op   = _snapshot_operator(O),
+            out  = hist,
+            iter = iter,
+            acc  = acc,
+            accumulated_energy   = real(corr.accumulated_energy),
+            accumulated_variance = hasproperty(corr, :accumulated_variance) ?
+                                   real(corr.accumulated_variance) : 0.0)
+    mv(tmp, path; force = true)
+    return path
+end
+
+
 function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             n_body=1,
             initial_error = 0,
@@ -131,7 +192,9 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
             compute_var_error = true,
             compute_pt2 = false,
             compute_pt2_error = false,
-            checkfile=nothing) where {N,T}
+            checkfile=nothing,
+            resume_file=nothing,
+            resume_stride=100) where {N,T}
 
     # the pt2-error probes imply computing pt2
     compute_pt2 |= compute_pt2_error
@@ -245,6 +308,28 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     # dispatches to the SparsePauliVector kernel
     Oin isa SparsePauliVector && (P = SparsePauliVector(P; T=T))
 
+    # Resume from a previous snapshot, if one is there. This must happen before
+    # `out_ckpt` is built below -- that is a shallow copy, and rebinding `out`
+    # afterwards would leave it pointing at the discarded history arrays.
+    iter_start = 1
+    if resume_file !== nothing && isfile(resume_file)
+        r = load(resume_file)
+        O = _restore_operator(r["op"])
+        out = r["out"]
+        out["H0"] = Oin              # dropped from the snapshot on purpose
+        iter_start = r["iter"] + 1
+        corr.accumulated_energy = r["accumulated_energy"]
+        compute_var_error && (corr.accumulated_variance = r["accumulated_variance"])
+        acc = r["acc"]
+        accumulated_norm_error = acc.norm_error
+        accumulated_pt2_error  = acc.pt2_error
+        ecurr = acc.ecurr
+        if verbose >= 1
+            @printf("\n RESUMED from %s at iteration %d  (len(H) = %d, E = %.8f)\n",
+                    resume_file, iter_start, length(O), real(ecurr))
+        end
+    end
+
     # Checkpoint payload: what is needed to replay the trajectory -- H0, the
     # state and the (generator, angle) sequence plus the small per-rotation
     # histories. It shares the history arrays with `out` (shallow copy), so
@@ -265,7 +350,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
 
     operator_truncation_save = deepcopy(operator_truncation)
 
-    for iter in 1:max_iter
+    for iter in iter_start:max_iter
         
         # Wall time of the whole iteration (commutator through checkpoint);
         # this is what the "Time" column reports.
@@ -430,6 +515,17 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         # truncation -- no need to pay GB-scale writes for O every iteration.
         if checkfile !== nothing
             @timeit to "checkpoint" @save "$(checkfile).jld2" out=out_ckpt
+        end
+
+        # Resumable snapshot: strided, because it writes the operator itself
+        # rather than the small replay record above.
+        if resume_file !== nothing && (iter % resume_stride == 0 || iter == max_iter)
+            @timeit to "resume_snapshot" save_resume_state(
+                resume_file, O, corr, out, iter,
+                (norm_error = accumulated_norm_error,
+                 pt2_error  = accumulated_pt2_error,
+                 ecurr      = ecurr,
+                 var_curr   = var_curr))
         end
 
         verbose < 1 || @printf(" %8.2f", (time_ns() - t_iter) / 1e9)
