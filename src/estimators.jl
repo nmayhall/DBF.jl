@@ -519,11 +519,10 @@ function cmx_moments(Oin::AnyPauliSum{N,T}, ψ::Ket{N}) where {N,T}
     xz = pack_x_z(O)
     v, basis = fois_space(xz, ψ, thresh=0)
     e0 = real(expectation_value(xz, ψ))
-    op = SubspaceOp(xz, basis, ψ; mode=:free, verbose=0)
     w  = ComplexF64[get(v, k, zero(T)) for k in basis]
     w[1] -= e0
     I2 = real(dot(w, w))
-    I3 = real(dot(w, op(w))) - e0 * I2
+    I3 = subspace_quadform(xz, basis, ψ, w) - e0 * I2
     return (e0, I2, I3)
 end
 
@@ -534,3 +533,85 @@ end
 lowering and the ratio is meaningless).
 """
 cmx_energy(I1, I2, I3) = I3 > 0 ? I1 - I2^2/I3 : I1
+
+
+"""
+    subspace_quadform(O::XZPauliSum{T}, basis, ψ, w) where T
+
+`⟨w|O|w⟩` for `w` on the FOIS basis, with the pair scan pruned by support
+overlap. Exact — it skips only pairs that provably cannot contribute.
+
+`⟨i_a|O|i_b⟩ ≠ 0` requires `x_a ⊻ x_b ∈ X`, hence
+`weight(x_a ⊻ x_b) = w_a + w_b - 2·overlap ≤ w_max`, i.e.
+
+    overlap ≥ omin(w_a, w_b) = ⌈(w_a + w_b - w_max)/2⌉
+
+When `omin ≥ 2`, an inverted index from support *pairs* to basis indices
+enumerates every candidate; when `omin ≤ 1` the weight gives no usable
+constraint and that weight class is scanned in full. For a 2-body molecular H
+all x-strings have weight ≤ 4, so the dominant w4×w4 block needs overlap ≥ 2 and
+the index covers essentially everything (HBC: ~2.5k candidates per row instead
+of 242k). Once the flow generates weight-6/8 strings the w4×w4 block becomes
+unconstrained and the gain shrinks accordingly.
+
+This is what CMX needs: `I₃ = ⟨w|O|w⟩ - e₀·I₂` is a single quadratic form.
+"""
+function subspace_quadform(O::XZPauliSum{T}, basis::Vector{Ket{N}}, ψ::Ket{N},
+                           w::Vector{ComplexF64}) where {N,T}
+    dim = length(basis)
+    dim == 0 && return 0.0
+    xs     = collect(keys(O))
+    tab    = XTable(xs)
+    groups = Vector{Vector{Tuple{Int128,T}}}([O[x] for x in xs])
+    xb  = Int128[k.v ⊻ ψ.v for k in basis]
+    wt  = Int[count_ones(x) for x in xb]
+    wmax = isempty(wt) ? 0 : maximum(wt)
+
+    # support positions of each basis x-string, and the pair buckets
+    pos = [Int[i for i in 1:N if (x >> (i-1)) & 1 == 1] for x in xb]
+    buckets = [Int32[] for _ in 1:N*N]
+    @inbounds for a in 1:dim
+        p = pos[a]
+        for i in 1:length(p), j in i+1:length(p)
+            push!(buckets[(p[i]-1)*N + p[j]], Int32(a))
+        end
+    end
+    classes = sort(unique(wt))
+    bycls   = Dict(c => Int32[a for a in 1:dim if wt[a] == c] for c in classes)
+
+    gdiag = get(tab, Int128(0))
+    nch = max(1, Threads.nthreads())
+    partial = zeros(Float64, nch)
+    @threads for ch in 1:nch
+        stamp = zeros(Int32, dim); gen = Int32(0); cand = Int32[]
+        acc = 0.0
+        @inbounds for a in ch:nch:dim
+            xa = xb[a]; ia = ψ.v ⊻ xa; wa = wt[a]; wA = w[a]
+            if gdiag != 0
+                acc += real(conj(wA) * _phase_sum(groups[gdiag], Int128(0), ia) * wA)
+            end
+            gen += Int32(1); empty!(cand)
+            p = pos[a]
+            for i in 1:length(p), j in i+1:length(p)
+                for b in buckets[(p[i]-1)*N + p[j]]
+                    if stamp[b] != gen; stamp[b] = gen; push!(cand, b); end
+                end
+            end
+            for cls in classes                       # omin <= 1 => no usable constraint
+                if wa + cls - wmax <= 2
+                    for b in bycls[cls]
+                        if stamp[b] != gen; stamp[b] = gen; push!(cand, b); end
+                    end
+                end
+            end
+            for b in cand
+                b > a || continue                    # Hermitian: upper triangle, doubled
+                xc = xa ⊻ xb[b]
+                g = get(tab, xc); g == 0 && continue
+                acc += 2*real(conj(wA) * _phase_sum(groups[g], xc, ia) * w[b])
+            end
+        end
+        partial[ch] = acc
+    end
+    return sum(partial)
+end

@@ -264,6 +264,9 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     out["norm_error_per_grad"] = Vector{Float64}([])
     out["cmx_error_per_grad"] = Vector{Float64}([])
     out["cmx_per_grad"] = Vector{Float64}([])
+    # accumulated_pt2_error was computed and printed but never stored, so the
+    # PT2-measured truncation error could not be used downstream
+    out["pt2_error_per_grad"] = Vector{Float64}([])
     out["entropy_per_grad"] = Vector{Float64}([])
     out["variance_per_grad"] = Vector{Float64}([])
     out["accumulated_var_error_per_grad"] = Vector{Float64}([])
@@ -283,6 +286,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
     push!(out["norm_error_per_grad"], accumulated_norm_error)
     push!(out["cmx_error_per_grad"], accumulated_cmx_error)
     push!(out["cmx_per_grad"], cmx_error ? cmx_energy(cmx_moments(O, ψ)...) : 0.0)
+    push!(out["pt2_error_per_grad"], real(accumulated_pt2_error))
     push!(out["entropy_per_grad"], entropy(O))
     push!(out["variance_per_grad"], variance(O,ψ))
     push!(out["accumulated_var_error_per_grad"], compute_var_error ? real(corr.accumulated_variance) : 0.0)
@@ -531,6 +535,7 @@ function dbf_groundstate(Oin::AnyPauliSum{N,T}, ψ::Ket{N};
         push!(out["norm_error_per_grad"], accumulated_norm_error)
         push!(out["cmx_error_per_grad"], accumulated_cmx_error)
         push!(out["cmx_per_grad"], cmx_curr)
+        push!(out["pt2_error_per_grad"], real(accumulated_pt2_error))
         push!(out["entropy_per_grad"], ent_curr)
         push!(out["accumulated_error_per_grad"], corr.accumulated_energy)
         push!(out["energies_per_grad"], ecurr)

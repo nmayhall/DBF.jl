@@ -45,6 +45,7 @@ export cepa
 export cmx2
 export best_reference
 export cmx_moments
+export subspace_quadform
 export cmx_energy
 
 end

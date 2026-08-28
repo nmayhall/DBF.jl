@@ -304,39 +304,120 @@ end
 
 e2 = |<k|Ho|x>|^2 / (e0 - <x|Hd|x>)
 """
-function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
+# Reference implementation, kept as the correctness baseline for the fast path.
+function pt2_reference(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
     Hd = diag(H)
     e2 = T(0)
-    e0 = expectation_value(Hd,ψ)
-
-    h = pack_x_z(H)
+    e0 = expectation_value(Hd, ψ)
+    h  = pack_x_z(H)
     hd = pack_x_z(Hd)
-    def = Vector{Tuple{Int128, Float64}}()
-
-    for (x,dx) in h
-
-        # make sure p isn't diagonal
-        x != 0 || continue       
-        
+    def = Vector{Tuple{Int128, T}}()
+    for (x, dx) in h
+        x != 0 || continue
         σHψ = 0
         σ = Ket{N}(0)
-        
         hx = get(h, x, def)
-        for (z,c) in hx
-            pzx = PauliBasis{N}(z,x)
+        for (z, c) in hx
+            pzx = PauliBasis{N}(z, x)
             czx, σ = pzx * ψ
-            σHψ += czx * c 
+            σHψ += czx * c
         end
-        e2 +=  abs2(σHψ) / (e0 - expectation_value(hd, σ))
-        # c2,k2 = p*k
-
-        # k2 != k || error(" k==k2")
-        # e2 += (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
-        # e2 += 1 / (e0 - expectation_value(Hd, k2))
-        # e2 += 1 / (e0)
-        # @show (c*c2)'*(c*c2) / (e0 - expectation_value(Hd, k2))
+        e2 += abs2(σHψ) / (e0 - expectation_value(hd, σ))
     end
     return e0, e2
+end
+
+"""
+    pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
+
+`E⁽²⁾ = Σ_σ |⟨σ|H|ψ⟩|² / (e₀ - ⟨σ|H|σ⟩)` over the first-order interacting space.
+
+The denominators are the whole cost of a naive evaluation: one `⟨σ|H_d|σ⟩` per
+x-group is `O(n_x · |diag(H)|)`. Two things remove almost all of it.
+
+**The diagonal factorizes.** `σ = ψ ⊻ x`, and for a diagonal Pauli `Z^z`,
+`parity(z ∧ (ψ⊻x)) = parity(z∧ψ) ⊻ parity(z∧x)`, so
+
+    ⟨σ|Z^z|σ⟩ = ⟨ψ|Z^z|ψ⟩ · (-1)^parity(z ∧ x)
+
+Writing `d_z = c_z·(-1)^parity(z∧ψ)` (precomputed once), the denominator is
+`Σ_z d_z (-1)^parity(z∧x)`. For z of weight ≤ 2 that sum collapses to sums over
+the *support of x* alone, costing `O(w²)` with `w = weight(x)` rather than
+`O(|diag|)`. A JW 2-body Hamiltonian has a purely weight-≤2 diagonal (HBC:
+w0=1, w1=84, w2=3486), so this covers all of it; any higher-weight diagonal
+terms the flow generates fall back to a direct loop, so the result stays exact
+and degrades gracefully.
+
+**And the group loop is independent**, so it threads.
+"""
+function pt2(H::PauliSum{N,T}, ψ::Ket{N}) where {N,T}
+    h  = pack_x_z(H)
+    ψv = ψ.v
+    diagz = haskey(h, Int128(0)) ? h[Int128(0)] : Vector{Tuple{Int128,T}}()
+
+    # d_z = c_z * <ψ|Z^z|ψ>, split by z-weight
+    d0 = zero(T)
+    A  = zeros(T, N)                       # weight-1, by position
+    B  = zeros(T, N, N)                    # weight-2, symmetric
+    rest_z = Int128[]; rest_d = T[]
+    for (z, c) in diagz
+        d = iseven(count_ones(z & ψv)) ? c : -c
+        w = count_ones(z)
+        if w == 0
+            d0 += d
+        elseif w == 1
+            A[trailing_zeros(z) + 1] += d
+        elseif w == 2
+            p = trailing_zeros(z) + 1
+            q = trailing_zeros(z & ~(Int128(1) << (p-1))) + 1
+            B[p,q] += d; B[q,p] += d
+        else
+            push!(rest_z, z); push!(rest_d, d)
+        end
+    end
+    SA = sum(A); R = vec(sum(B, dims=2)); SB = sum(R)/2
+    Srest = isempty(rest_d) ? zero(T) : sum(rest_d)
+    e0 = d0 + SA + SB + Srest
+
+    xs = collect(h)
+    nch = max(1, Threads.nthreads())
+    part = zeros(T, nch)
+    @threads for ch in 1:nch
+        acc = zero(T); sup = Int[]
+        @inbounds for gi in ch:nch:length(xs)
+            x, zs = xs[gi]
+            x != 0 || continue
+
+            empty!(sup)
+            xx = x
+            while xx != 0
+                b = trailing_zeros(xx); push!(sup, b + 1); xx &= xx - Int128(1)
+            end
+
+            # denominator: Σ_z d_z (-1)^parity(z∧x), collapsed onto supp(x)
+            t1 = zero(T); t2 = zero(T); sa = zero(T)
+            for ii in 1:length(sup)
+                p = sup[ii]
+                sa += A[p]; t1 += R[p]
+                for jj in ii+1:length(sup); t2 += B[p, sup[jj]]; end
+            end
+            D = d0 + (SA - 2sa) + (SB - 2*(t1 - 2t2))
+            for r in 1:length(rest_z)
+                D += iseven(count_ones(rest_z[r] & x)) ? rest_d[r] : -rest_d[r]
+            end
+
+            # numerator ⟨σ|H|ψ⟩ with σ = ψ ⊻ x; target ket is σ, fixed per group
+            σHψ = zero(T)
+            σv = ψv ⊻ x
+            for (z, c) in zs
+                ph = (4 - (count_ones(z & x) & 3) + 2*count_ones(z & σv)) & 3
+                σHψ += ph == 0 ? c : ph == 1 ? im*c : ph == 2 ? -c : -im*c
+            end
+            acc += abs2(σHψ) / (e0 - D)
+        end
+        part[ch] = acc
+    end
+    return e0, sum(part)
 end
 
 """
@@ -348,24 +429,92 @@ single pass instead of building the packed `XZPauliSum` structure, and the
 denominators use the fast `SparsePauliVector` `Ket` expectation kernel.
 """
 function pt2(H::SparsePauliVector{N,W,T}, ψ::Ket{N}) where {N,W,T}
-    Hd = diag(H)
-    e2 = T(0)
-    e0 = expectation_value(Hd, ψ)
+    ψv = ψ.v
 
-    amps = Dict{Int128, T}()
-    for (p, c) in H
-        p.x != 0 || continue
-        czx, _ = p * ψ
-        amps[p.x] = get(amps, p.x, T(0)) + czx * c
+    # --- diagonal, decomposed by z-weight (see the PauliSum method) ---------
+    d0 = zero(T); A = zeros(T, N); B = zeros(T, N, N)
+    rest_z = Int128[]; rest_d = T[]
+    @inbounds for i in 1:H.n
+        H.x[i] == 0 || continue
+        z = H.z[i] % Int128
+        d = iseven(count_ones(z & ψv)) ? H.c[i] : -H.c[i]
+        w = count_ones(z)
+        if w == 0
+            d0 += d
+        elseif w == 1
+            A[trailing_zeros(z)+1] += d
+        elseif w == 2
+            p = trailing_zeros(z)+1
+            q = trailing_zeros(z & ~(Int128(1) << (p-1)))+1
+            B[p,q] += d; B[q,p] += d
+        else
+            push!(rest_z, z); push!(rest_d, d)
+        end
+    end
+    SA = sum(A); R = vec(sum(B, dims=2)); SB = sum(R)/2
+    e0 = d0 + SA + SB + (isempty(rest_d) ? zero(T) : sum(rest_d))
+
+    # --- ⟨σ|H|ψ⟩ per x-group ----------------------------------------------
+    # The canonical SPV order is x-major, so terms sharing an x-string form a
+    # contiguous run and the amplitudes accumulate in one pass with no Dict.
+    # Verify rather than assume: an unsorted buffer falls back.
+    sorted = true
+    @inbounds for i in 2:H.n
+        if H.x[i] < H.x[i-1]; sorted = false; break; end
+    end
+    xsv = Int128[]; amps = T[]
+    if sorted
+        i = 1
+        @inbounds while i <= H.n
+            x = H.x[i]; j = i
+            while j <= H.n && H.x[j] == x; j += 1; end
+            if x != 0
+                xi = x % Int128; σv = ψv ⊻ xi; a = zero(T)
+                for k in i:j-1
+                    z = H.z[k] % Int128
+                    ph = (4 - (count_ones(z & xi) & 3) + 2*count_ones(z & σv)) & 3
+                    a += ph == 0 ? H.c[k] : ph == 1 ? im*H.c[k] : ph == 2 ? -H.c[k] : -im*H.c[k]
+                end
+                push!(xsv, xi); push!(amps, a)
+            end
+            i = j
+        end
+    else
+        d = Dict{Int128,T}()
+        @inbounds for i in 1:H.n
+            H.x[i] != 0 || continue
+            xi = H.x[i] % Int128; z = H.z[i] % Int128; σv = ψv ⊻ xi
+            ph = (4 - (count_ones(z & xi) & 3) + 2*count_ones(z & σv)) & 3
+            v = ph == 0 ? H.c[i] : ph == 1 ? im*H.c[i] : ph == 2 ? -H.c[i] : -im*H.c[i]
+            d[xi] = get(d, xi, zero(T)) + v
+        end
+        for (k, v) in d; push!(xsv, k); push!(amps, v); end
     end
 
-    for (x, σHψ) in amps
-        σ = Ket{N}(ψ.v ⊻ x)
-        e2 += abs2(σHψ) / (e0 - expectation_value(Hd, σ))
+    # --- denominators, O(weight(x)^2) each ---------------------------------
+    nch = max(1, Threads.nthreads())
+    part = zeros(T, nch)
+    @threads for ch in 1:nch
+        acc = zero(T); sup = Int[]
+        @inbounds for gi in ch:nch:length(xsv)
+            x = xsv[gi]
+            empty!(sup); xx = x
+            while xx != 0; push!(sup, trailing_zeros(xx)+1); xx &= xx - Int128(1); end
+            t1 = zero(T); t2 = zero(T); sa = zero(T)
+            for ii in 1:length(sup)
+                p = sup[ii]; sa += A[p]; t1 += R[p]
+                for jj in ii+1:length(sup); t2 += B[p, sup[jj]]; end
+            end
+            D = d0 + (SA - 2sa) + (SB - 2*(t1 - 2t2))
+            for r in 1:length(rest_z)
+                D += iseven(count_ones(rest_z[r] & x)) ? rest_d[r] : -rest_d[r]
+            end
+            acc += abs2(amps[gi]) / (e0 - D)
+        end
+        part[ch] = acc
     end
-    return e0, e2
+    return e0, sum(part)
 end
-
 
 function project(k::KetSum{N,T}, basis::Vector{Ket{N}}) where {N,T}
     out = KetSum(basis,T=T)
