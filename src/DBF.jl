@@ -21,6 +21,7 @@ include("diagonalization.jl")
 include("groundstate.jl")
 include("disentangle.jl")
 include("adapt.jl")
+include("vqe.jl")
 include("estimators.jl")
 
 
@@ -31,6 +32,10 @@ include("estimators.jl")
 
 export dbf_diag
 export dbf_groundstate
+export dbf_vqe
+export dbf_vqe_from_h0
+export optimize_angles
+export forward_sweep_angles
 export dbf_disentangle
 export adapt
 export pack_x_z

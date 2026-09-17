@@ -13,5 +13,6 @@ using Test
     include("test_adapt.jl")
     include("test_helpers.jl")
     include("test_estimators.jl")
+    include("test_vqe.jl")
     include("test_schrodinger_picture.jl")
 end
