@@ -3,11 +3,21 @@
 #  Uses hubbard_hf_basis.jl (adopts the doped-Hubbard LNO integrals→Pauli+PH
 #  pipeline). Records the reference FCI overlap |⟨HF|GS⟩|² in the CSV meta.
 #
-#  Run (from DBF/examples): julia --project=. mf_truncation/run_hubbard_hf.jl [k] [eps] [max_iter] [U]
+#  Run (from DBF/examples): julia --project=. mf_truncation/run_hubbard_hf.jl [k] [eps] [max_iter] [U] [L]
+#  L defaults to 6. FCI baseline is matrix-free (feasible to n=2L ≤ 20, i.e. L ≤ 10);
+#  above that the exact baseline is skipped (NaN) and CCSD is the benchmark.
+#
+#  SETUP (once per machine): MajoranaMeanFieldTruncation lives on the PauliOperators
+#  `majorana-meanfield` branch, which is not registered. Point this DBF env at a local
+#  checkout of that branch, e.g.:
+#      git -C /path/to/PauliOperators.jl checkout majorana-meanfield
+#      julia --project=. -e 'using Pkg; Pkg.develop(path="/path/to/PauliOperators.jl"); Pkg.instantiate()'
+#  (Manifest.toml is gitignored, so this resolution is per-machine and not committed.)
 # =============================================================================
 
 using PauliOperators, DBF, LinearAlgebra, Printf
 include(joinpath(@__DIR__, "hubbard_hf_basis.jl"))
+include(joinpath(@__DIR__, "fci_helper.jl"))
 
 function save_traj(path, label, res, meta)
     E=real.(res["energies_per_grad"]); V=real.(res["variance_per_grad"])
@@ -21,12 +31,11 @@ function save_traj(path, label, res, meta)
     println("  wrote ", path)
 end
 
-function main(k, ϵ, max_iter, U)
-    L = 6
+function main(k, ϵ, max_iter, U, L)
     tag = "hubbardHFL$(L)U$(U)_k$(k)"
     logdir = joinpath(@__DIR__,"logs"); mkpath(logdir)
     H, na, nb, n = build_hf_hamiltonian(L, U)
-    F = eigen(Hermitian(Matrix(H))); Eexact = F.values[1]; overlap = abs2(F.vectors[1,1])
+    Eexact, overlap = fci_ground(H; nqubits=n)     # matrix-free FCI; NaN if n>maxdim
     ψ = Ket{n}(0)
     @printf("HF basis: U=%.3f  E_HF=%.6f  E_exact=%.6f  |<HF|GS>|^2=%.6f  nterms(H)=%d\n",
             U, real(expectation_value(H,ψ)), Eexact, overlap, length(H))
@@ -56,4 +65,5 @@ k=length(ARGS)>=1 ? parse(Int,ARGS[1]) : 4
 ϵ=length(ARGS)>=2 ? parse(Float64,ARGS[2]) : 1e-2
 mi=length(ARGS)>=3 ? parse(Int,ARGS[3]) : 40
 U=length(ARGS)>=4 ? parse(Float64,ARGS[4]) : 2.0
-main(k,ϵ,mi,U)
+L=length(ARGS)>=5 ? parse(Int,ARGS[5]) : 6
+main(k,ϵ,mi,U,L)
